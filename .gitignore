@@ -1,51 +1,24 @@
-# =========================
-# Secrets
-# =========================
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-
-# =========================
 # Python
-# =========================
 __pycache__/
 *.py[cod]
+
+# Virtual environment
 .venv/
-venv/
-env/
+
+# Test/cache files
 .pytest_cache/
-.mypy_cache/
-.ipynb_checkpoints/
-*.egg-info/
-dist/
-build/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# =========================
-# Java
-# =========================
-*.class
-target/
-out/
-.gradle/
-build/
+# Environment variables / secrets
+.env
+.env.*
 
-# =========================
 # IDE
-# =========================
 .vscode/
 .idea/
-*.iml
 
-# =========================
-# Logs
-# =========================
-*.log
-logs/
-
-# =========================
 # OS
-# =========================
 .DS_Store
 Thumbs.db
