@@ -1,13 +1,17 @@
 from fastapi import FastAPI
 
 from ai_it_support_assistant.api.routes.health import router as health_router
+from ai_it_support_assistant.core.config import get_settings
 
 
 def create_app() -> FastAPI:
+    settings = get_settings()
+
     app = FastAPI(
-        title="AI IT Support Assistant",
+        title=settings.app_name,
         description="Production-style GenAI IT support backend",
-        version="0.1.0",
+        version=settings.app_version,
+        debug=settings.debug,
     )
 
     # Include the health check router
