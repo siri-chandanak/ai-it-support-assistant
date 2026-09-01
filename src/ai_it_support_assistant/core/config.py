@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     debug: bool = False
     document_storage_path: str = "data/documents"
 
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
