@@ -34,8 +34,8 @@ def test_upload_text_document(tmp_path: Path) -> None:
 
     assert body["filename"] == "runbook.txt"
     assert body["content_type"] == "text/plain"
-    assert body["status"] == "saved successfully"
-    assert body["size_bytes"] > 0
+    assert body["status"] == "processed"
+    assert body["character_count"] > 0
 
     stored_files = list(tmp_path.iterdir())
 
@@ -64,3 +64,29 @@ def test_reject_unsupported_document_type(tmp_path: Path) -> None:
         settings.document_storage_path = original_storage_path
     assert response.status_code == 400
     assert "Unsupported file type" in response.json()["detail"]
+
+
+def test_reject_document_with_no_usable_text(tmp_path: Path) -> None:
+    settings = get_settings()
+    original_storage_path = settings.document_storage_path
+
+    settings.document_storage_path = str(tmp_path)
+
+    try:
+        response = client.post(
+            "/api/v1/documents",
+            files={
+                "file": (
+                    "empty.txt",
+                    b"   \n\n   ",
+                    "text/plain",
+                )
+            },
+        )
+    finally:
+        settings.document_storage_path = original_storage_path
+
+    assert response.status_code == 422
+    assert "no usable text" in response.json()["detail"]
+
+    assert list(tmp_path.iterdir()) == []
