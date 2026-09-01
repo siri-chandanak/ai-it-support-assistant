@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     environment: str = "development"
     debug: bool = False
+    document_storage_path: str = "data/documents"
 
     model_config = SettingsConfigDict(
         env_file=".env",
