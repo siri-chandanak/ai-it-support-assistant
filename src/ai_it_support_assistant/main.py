@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from ai_it_support_assistant.api.routes.documents import router as documents_router
 from ai_it_support_assistant.api.routes.health import router as health_router
+from ai_it_support_assistant.api.routes.rag import router as rag_router
 from ai_it_support_assistant.api.routes.retrieval import router as retrieval_router
 from ai_it_support_assistant.core.config import get_settings
 
@@ -24,6 +25,9 @@ def create_app() -> FastAPI:
 
     # Include the retrieval router
     app.include_router(retrieval_router, prefix="/api/v1", tags=["retrieval"])
+
+    # Include the RAG router
+    app.include_router(rag_router, prefix="/api/v1", tags=["rag"])
 
     return app
 
