@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection_name: str = "document_chunks"
 
+    openai_api_key: str = ""
+    llm_model: str = "gpt-5.6-luna"
+
+    rag_top_k: int = 3
+    rag_score_threshold: float = 0.4
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
