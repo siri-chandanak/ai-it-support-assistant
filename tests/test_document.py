@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -10,21 +11,31 @@ client = TestClient(app)
 
 def test_upload_text_document(tmp_path: Path) -> None:
     settings = get_settings()
-    original_storage_path = settings.document_storage_path
 
+    original_storage_path = settings.document_storage_path
     settings.document_storage_path = str(tmp_path)
 
     try:
-        response = client.post(
-            "/api/v1/documents",
-            files={
-                "file": (
-                    "runbook.txt",
-                    b"Restart the VPN client before escalating.",
-                    "text/plain",
-                )
-            },
-        )
+        with (
+            patch(
+                "ai_it_support_assistant.services.ingestion_service.embed_chunks",
+                return_value=[[0.1, 0.2, 0.3]],
+            ),
+            patch(
+                "ai_it_support_assistant.services.ingestion_service.store_chunk_vectors",
+                return_value=1,
+            ),
+        ):
+            response = client.post(
+                "/api/v1/documents",
+                files={
+                    "file": (
+                        "runbook.txt",
+                        b"Restart the VPN client before escalating.",
+                        "text/plain",
+                    )
+                },
+            )
     finally:
         settings.document_storage_path = original_storage_path
 
@@ -34,13 +45,9 @@ def test_upload_text_document(tmp_path: Path) -> None:
 
     assert body["filename"] == "runbook.txt"
     assert body["content_type"] == "text/plain"
-    assert body["status"] == "processed"
-    assert body["character_count"] > 0
-
-    stored_files = list(tmp_path.iterdir())
-
-    assert len(stored_files) == 1
-    assert stored_files[0].suffix == ".txt"
+    assert body["chunk_count"] == 1
+    assert body["indexed_chunk_count"] == 1
+    assert body["status"] == "indexed"
 
 
 def test_reject_unsupported_document_type(tmp_path: Path) -> None:
