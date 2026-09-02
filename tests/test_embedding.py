@@ -4,7 +4,11 @@ import numpy as np
 import pytest
 
 from ai_it_support_assistant.schemas.document import DocumentChunk
-from ai_it_support_assistant.services.embedding_service import EmbeddingError, embed_chunks
+from ai_it_support_assistant.services.embedding_service import (
+    EmbeddingError,
+    embed_chunks,
+    embed_query,
+)
 
 
 def test_embed_chunks_returns_vectors() -> None:
@@ -57,5 +61,38 @@ def test_embed_chunks_rejects_empty_list() -> None:
     ):
         embed_chunks(
             chunks=[],
+            model_name="test-model",
+        )
+
+
+def test_embed_query_returns_vector() -> None:
+    mock_model = MagicMock()
+
+    mock_model.encode.return_value = np.array([0.1, 0.2, 0.3])
+
+    with patch(
+        "ai_it_support_assistant.services.embedding_service.get_embedding_model",
+        return_value=mock_model,
+    ):
+        vector = embed_query(
+            query="How do I restart VPN?",
+            model_name="test-model",
+        )
+
+    assert vector == [0.1, 0.2, 0.3]
+
+    mock_model.encode.assert_called_once_with(
+        "How do I restart VPN?",
+        normalize_embeddings=True,
+    )
+
+
+def test_embed_query_rejects_empty_query() -> None:
+    with pytest.raises(
+        EmbeddingError,
+        match="Cannot embed an empty query",
+    ):
+        embed_query(
+            query="   ",
             model_name="test-model",
         )

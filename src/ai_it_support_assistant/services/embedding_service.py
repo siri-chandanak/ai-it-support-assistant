@@ -38,3 +38,26 @@ def embed_chunks(
         raise EmbeddingError("Failed to generate embeddings.") from exc
 
     return embeddings.tolist()
+
+
+def embed_query(
+    *,
+    query: str,
+    model_name: str,
+) -> list[float]:
+    cleaned_query = query.strip()
+
+    if not cleaned_query:
+        raise EmbeddingError("Cannot embed an empty query.")
+
+    model = get_embedding_model(model_name)
+
+    try:
+        embedding = model.encode(
+            cleaned_query,
+            normalize_embeddings=True,
+        )
+    except Exception as exc:
+        raise EmbeddingError("Failed to generate query embedding.") from exc
+
+    return embedding.tolist()
