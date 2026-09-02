@@ -8,6 +8,7 @@ class DocumentUploadResponse(BaseModel):
     size_bytes: int
     character_count: int
     chunk_count: int
+    indexed_chunk_count: int
     status: str
 
 

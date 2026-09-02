@@ -34,7 +34,7 @@ def test_upload_text_document(tmp_path: Path) -> None:
 
     assert body["filename"] == "runbook.txt"
     assert body["content_type"] == "text/plain"
-    assert body["status"] == "processed"
+    assert body["status"] == "indexed"
     assert body["character_count"] > 0
 
     stored_files = list(tmp_path.iterdir())

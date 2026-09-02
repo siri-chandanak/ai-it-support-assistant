@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     chunk_size: int = 1000
     chunk_overlap: int = 200
 
+    embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_collection_name: str = "document_chunks"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

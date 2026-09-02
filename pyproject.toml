@@ -11,6 +11,8 @@ dependencies = [
     "fastapi>=0.141.1",
     "pydantic-settings>=2.15.0",
     "python-multipart>=0.0.32",
+    "qdrant-client>=1.19.0",
+    "sentence-transformers>=6.0.1",
     "uvicorn[standard]>=0.52.4",
 ]
 

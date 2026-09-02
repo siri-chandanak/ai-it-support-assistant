@@ -1,0 +1,179 @@
+VPN ACCESS TROUBLESHOOTING RUNBOOK
+
+Purpose
+
+This runbook provides troubleshooting steps for employees who are unable to connect to the corporate VPN. It is intended for Level 1 and Level 2 IT support teams.
+
+1. VPN LOGIN FAILURE
+
+If a user reports that the VPN client rejects their username or password, first confirm that the user can sign in to the corporate identity portal.
+
+Ask the user to verify that Caps Lock is disabled and that they are using their current corporate password.
+
+If the user recently changed their password, the VPN client may still contain cached credentials. Ask the user to completely close the VPN client, reopen it, and enter the new password.
+
+If login continues to fail, clear the cached VPN credentials from the operating system credential manager and restart the VPN client.
+
+Do not reset the user's password unless authentication failure is also confirmed against the corporate identity system.
+
+2. MULTI-FACTOR AUTHENTICATION FAILURE
+
+The VPN requires multi-factor authentication after the user's primary credentials are accepted.
+
+If the user does not receive an MFA notification, verify that the registered authentication device has an active internet connection.
+
+Ask the user to open the authenticator application manually and check for a pending approval request.
+
+If push notifications continue to fail, the user may use an available verification code from the authenticator application.
+
+If the user's MFA device was replaced, lost, or wiped, escalate the request to the Identity and Access Management team for MFA re-registration.
+
+Support engineers must never bypass MFA or approve authentication requests on behalf of users.
+
+3. VPN CLIENT CONNECTION FAILURE
+
+If authentication succeeds but the VPN cannot establish a connection, verify that the user's internet connection is working.
+
+Ask the user to open a normal website outside the corporate network to confirm general internet access.
+
+Restart the VPN client before performing additional troubleshooting.
+
+If restarting the client does not work, restart the user's computer.
+
+Check whether the VPN gateway is reachable and verify that there is no active VPN service outage.
+
+If multiple users report the same connection problem, investigate the VPN gateway or network infrastructure instead of troubleshooting individual laptops.
+
+4. VPN CERTIFICATE ERRORS
+
+The VPN client uses certificates to validate secure connections.
+
+If the user receives an expired certificate error, confirm the expiration date of the certificate.
+
+Corporate VPN certificates must be renewed before their expiration date.
+
+If the certificate is missing, corrupted, or expired, reinstall or renew the certificate using the approved certificate-management process.
+
+Do not instruct users to disable certificate validation.
+
+Certificate validation errors may also occur when the computer's system date or time is incorrect. Verify that the operating system clock is synchronized.
+
+5. DNS ISSUES AFTER VPN CONNECTION
+
+Sometimes the VPN connection succeeds but internal company websites cannot be reached.
+
+First verify that the VPN session shows a connected status.
+
+Test whether the internal hostname resolves through DNS.
+
+If internal hostnames fail to resolve, clear the local DNS cache and retry the request.
+
+On Windows, the DNS cache can be cleared using the approved administrative troubleshooting procedure.
+
+If DNS resolution continues to fail, verify that the VPN client received the expected corporate DNS servers.
+
+If multiple users experience the same DNS issue, escalate the problem to the network operations team.
+
+6. SLOW VPN PERFORMANCE
+
+If a user reports slow VPN performance, first determine whether the problem affects all applications or only one service.
+
+Ask the user to verify their local internet connection speed.
+
+High latency, packet loss, or unstable Wi-Fi may cause poor VPN performance even when the VPN infrastructure is functioning correctly.
+
+If possible, ask the user to test using a wired connection or a different network.
+
+Do not immediately restart VPN infrastructure because one user reports slow performance.
+
+If multiple users in different locations report severe performance degradation, check VPN gateway utilization and network monitoring dashboards.
+
+7. ACCOUNT LOCKOUT
+
+Repeated failed VPN login attempts may lock the user's corporate account.
+
+Verify the user's account status in the identity-management system.
+
+If the account is locked, follow the approved account-unlock procedure.
+
+Before unlocking the account, confirm the identity of the requester according to company security policy.
+
+After the account is unlocked, ask the user to update any saved or cached credentials that may still contain the old password.
+
+Repeated lockouts often indicate that another device or application is continuing to use an outdated password.
+
+8. VPN SERVICE OUTAGE
+
+If several users report VPN failures at approximately the same time, check the infrastructure monitoring system before troubleshooting individual devices.
+
+Confirm the health of the VPN gateways, authentication services, DNS services, and network connectivity.
+
+If monitoring confirms a service outage, create or update the appropriate incident ticket.
+
+Record the affected service, start time, symptoms, known impact, and any troubleshooting already performed.
+
+Avoid asking every affected user to reinstall the VPN client when the root cause is a shared infrastructure failure.
+
+9. ESCALATION PROCEDURE
+
+Escalate the issue to the Network Operations team when:
+
+Multiple users cannot connect to the VPN.
+
+The VPN gateway appears unavailable.
+
+Corporate DNS services are failing for connected VPN users.
+
+There is significant packet loss or gateway performance degradation.
+
+Escalate the issue to the Identity and Access Management team when:
+
+User authentication succeeds inconsistently across corporate systems.
+
+MFA registration must be reset.
+
+The user's authentication device was lost or replaced.
+
+Certificate or identity-policy issues require administrative changes.
+
+Before escalation, include the username, device operating system, VPN client version, exact error message, troubleshooting already performed, and approximate time the issue started.
+
+10. SECURITY REQUIREMENTS
+
+Support engineers must never request a user's password.
+
+Users must never send passwords, MFA codes, private keys, or authentication tokens through email, chat, or incident tickets.
+
+Do not disable TLS certificate validation as a troubleshooting workaround.
+
+Do not bypass MFA requirements.
+
+Do not grant additional access permissions simply to solve a VPN connectivity problem.
+
+All privileged changes must follow the organization's authorization and change-management procedures.
+
+11. BASIC TROUBLESHOOTING ORDER
+
+Use the following order when investigating a standard VPN issue:
+
+Confirm the user's internet connection.
+
+Confirm corporate account authentication.
+
+Confirm MFA authentication.
+
+Restart the VPN client.
+
+Check cached credentials.
+
+Check certificate validity.
+
+Verify VPN gateway availability.
+
+Verify DNS resolution.
+
+Check monitoring systems for shared outages.
+
+Escalate only after collecting the required troubleshooting evidence.
+
+Following this order helps prevent unnecessary password resets, software reinstalls, and infrastructure changes.
