@@ -1,0 +1,301 @@
+[
+  {
+    "case_id": "vpn-login-001",
+    "question": "What should I do if the VPN keeps rejecting the user's password after they recently changed it?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "cached credentials",
+      "restart"
+    ]
+  },
+  {
+    "case_id": "vpn-login-002",
+    "question": "Should I reset a user's password immediately when VPN authentication fails?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "identity",
+      "password"
+    ]
+  },
+  {
+    "case_id": "vpn-mfa-001",
+    "question": "What should I check if the user does not receive an MFA notification during VPN login?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "internet connection",
+      "authenticator"
+    ]
+  },
+  {
+    "case_id": "vpn-mfa-002",
+    "question": "What should support do if the user's MFA phone was lost or replaced?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "Identity and Access Management",
+      "re-registration"
+    ]
+  },
+  {
+    "case_id": "vpn-connection-001",
+    "question": "Authentication succeeds, but the VPN still cannot establish a connection. What should I check?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "internet connection",
+      "restart"
+    ]
+  },
+  {
+    "case_id": "vpn-connection-002",
+    "question": "Several employees cannot connect to the VPN at the same time. Should I troubleshoot each laptop separately?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "VPN gateway",
+      "network infrastructure"
+    ]
+  },
+  {
+    "case_id": "vpn-certificate-001",
+    "question": "What should I do when the VPN client reports an expired certificate?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "expiration date",
+      "renew"
+    ]
+  },
+  {
+    "case_id": "vpn-certificate-002",
+    "question": "Can I disable certificate validation temporarily to fix a VPN certificate error?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "Do not",
+      "certificate validation"
+    ]
+  },
+  {
+    "case_id": "vpn-dns-001",
+    "question": "The VPN shows connected, but internal company websites do not open. What should I investigate?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "DNS",
+      "hostname"
+    ]
+  },
+  {
+    "case_id": "vpn-dns-002",
+    "question": "What should I do if internal hostnames do not resolve after VPN connection succeeds?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "DNS cache",
+      "corporate DNS servers"
+    ]
+  },
+  {
+    "case_id": "vpn-performance-001",
+    "question": "What should I check when only one user reports slow VPN performance?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "internet connection",
+      "latency"
+    ]
+  },
+  {
+    "case_id": "vpn-performance-002",
+    "question": "Should I restart the VPN infrastructure because one user says the VPN is slow?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "Do not",
+      "infrastructure"
+    ]
+  },
+  {
+    "case_id": "vpn-lockout-001",
+    "question": "What should support verify when repeated VPN login attempts lock a user's account?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "account status",
+      "identity"
+    ]
+  },
+  {
+    "case_id": "vpn-lockout-002",
+    "question": "Why might a user's account keep getting locked again after it was unlocked?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "cached credentials",
+      "old password"
+    ]
+  },
+  {
+    "case_id": "vpn-outage-001",
+    "question": "What should I check first if many users report VPN failures around the same time?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "monitoring",
+      "VPN gateways"
+    ]
+  },
+  {
+    "case_id": "vpn-outage-002",
+    "question": "What information should be recorded when monitoring confirms a VPN service outage?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "affected service",
+      "start time",
+      "symptoms"
+    ]
+  },
+  {
+    "case_id": "vpn-escalation-001",
+    "question": "When should a VPN problem be escalated to Network Operations?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "multiple users",
+      "VPN gateway"
+    ]
+  },
+  {
+    "case_id": "vpn-escalation-002",
+    "question": "When should a VPN issue be escalated to the Identity and Access Management team?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "MFA",
+      "authentication"
+    ]
+  },
+  {
+    "case_id": "vpn-security-001",
+    "question": "Can a support engineer ask a user to send their password or MFA code in a ticket?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "never",
+      "password",
+      "MFA"
+    ]
+  },
+  {
+    "case_id": "vpn-security-002",
+    "question": "Can support bypass MFA temporarily to restore VPN access?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "Do not bypass",
+      "MFA"
+    ]
+  },
+  {
+    "case_id": "vpn-order-001",
+    "question": "What is the recommended basic troubleshooting order for a standard VPN issue?",
+    "should_answer": true,
+    "expected_document_ids": [
+      "7acc7d09-ab44-40f7-94ee-23712b6e767a"
+    ],
+    "expected_keywords": [
+      "internet connection",
+      "authentication",
+      "MFA"
+    ]
+  },
+
+  {
+    "case_id": "vpn-insufficient-001",
+    "question": "Which specific Network Operations engineer should receive a VPN escalation?",
+    "should_answer": false,
+    "expected_document_ids": [],
+    "expected_keywords": []
+  },
+  {
+    "case_id": "vpn-insufficient-002",
+    "question": "What exact VPN gateway IP address should I test?",
+    "should_answer": false,
+    "expected_document_ids": [],
+    "expected_keywords": []
+  },
+  {
+    "case_id": "vpn-insufficient-003",
+    "question": "What exact certificate renewal command should I run on Windows?",
+    "should_answer": false,
+    "expected_document_ids": [],
+    "expected_keywords": []
+  },
+  {
+    "case_id": "vpn-insufficient-004",
+    "question": "What is the approved account-unlock command used by the company?",
+    "should_answer": false,
+    "expected_document_ids": [],
+    "expected_keywords": []
+  },
+
+  {
+    "case_id": "unknown-001",
+    "question": "What is today's cafeteria menu?",
+    "should_answer": false,
+    "expected_document_ids": [],
+    "expected_keywords": []
+  },
+  {
+    "case_id": "unknown-002",
+    "question": "What model laptop does the CEO use at home?",
+    "should_answer": false,
+    "expected_document_ids": [],
+    "expected_keywords": []
+  }
+]

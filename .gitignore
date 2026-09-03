@@ -25,4 +25,6 @@ htmlcov/
 Thumbs.db
 
 # Local application data
-data/
+data/*
+!data/evaluation/
+!data/evaluation/results/
