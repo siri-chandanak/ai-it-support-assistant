@@ -2,6 +2,8 @@ from functools import lru_cache
 
 from openai import OpenAI
 
+from ai_it_support_assistant.schemas.rag import GroundedLLMOutput
+
 
 class LLMError(Exception):
     pass
@@ -21,7 +23,7 @@ def generate_grounded_answer(
     context: str,
     api_key: str,
     model_name: str,
-) -> str:
+) -> GroundedLLMOutput:
     if not question.strip():
         raise LLMError("Question cannot be empty.")
 
@@ -37,11 +39,18 @@ Answer the user's question using only the provided company
 support context.
 
 Rules:
-1. Do not invent information that is not supported by the context.
-2. If the context does not contain enough information, say that the
-   available documentation does not provide enough information.
-3. Do not claim that an action was performed.
-4. Keep the answer concise and operationally useful.
+1. Use only facts supported by the supplied sources.
+2. Do not use outside knowledge.
+3. Do not invent missing procedures, commands, credentials,
+   policies, URLs, people, or system states.
+4. Every factual answer must cite the source numbers that
+   support it.
+5. Source numbers must refer only to sources provided in the
+   context.
+6. If the supplied sources do not contain enough information
+   to answer the question, set insufficient_context to true,
+   provide a short explanation, and return no source numbers.
+7. Do not claim that you executed an action.
 """.strip()
 
     input_text = f"""
@@ -57,13 +66,24 @@ Company support context:
             model=model_name,
             instructions=instructions,
             input=input_text,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "grounded_rag_answer",
+                    "strict": True,
+                    "schema": GroundedLLMOutput.model_json_schema(),
+                }
+            },
         )
     except Exception as exc:
+        print(f"OpenAI API error: {type(exc).__name__}: {exc}")
+
         raise LLMError("Failed to generate LLM response.") from exc
 
-    answer = response.output_text.strip()
-
-    if not answer:
+    if not response.output_text.strip():
         raise LLMError("LLM returned an empty response.")
 
-    return answer
+    try:
+        return GroundedLLMOutput.model_validate_json(response.output_text)
+    except Exception as exc:
+        raise LLMError("LLM returned invalid structured output.") from exc

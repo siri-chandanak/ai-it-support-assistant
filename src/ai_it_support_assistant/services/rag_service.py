@@ -1,7 +1,9 @@
 from ai_it_support_assistant.schemas.rag import (
+    GroundedLLMOutput,
     RAGResponse,
     RAGSource,
 )
+from ai_it_support_assistant.schemas.retrieval import RetrievedChunk
 from ai_it_support_assistant.services.llm_service import (
     generate_grounded_answer,
 )
@@ -27,15 +29,68 @@ def build_context(
             "\n".join(
                 [
                     f"[Source {index}]",
-                    f"Document ID: {chunk.document_id}",
-                    f"Chunk ID: {chunk.chunk_id}",
-                    f"Chunk Index: {chunk.chunk_index}",
-                    f"Content: {chunk.text}",
+                    chunk.text,
                 ]
             )
         )
 
     return "\n\n".join(sections)
+
+
+def validate_cited_sources(
+    *,
+    cited_source_numbers: list[int],
+    chunk_count: int,
+) -> None:
+    for source_number in cited_source_numbers:
+        if source_number < 1 or source_number > chunk_count:
+            raise RAGError(f"LLM cited invalid source number: {source_number}")
+
+
+def validate_grounded_output(
+    *,
+    llm_output: GroundedLLMOutput,
+    chunk_count: int,
+) -> None:
+    validate_cited_sources(
+        cited_source_numbers=llm_output.cited_source_numbers,
+        chunk_count=chunk_count,
+    )
+
+    if llm_output.insufficient_context and llm_output.cited_source_numbers:
+        raise RAGError("LLM cannot cite sources while declaring insufficient context.")
+
+    if not llm_output.insufficient_context and not llm_output.cited_source_numbers:
+        raise RAGError("Grounded answer must cite at least one source.")
+
+
+def build_sources_from_citations(
+    *,
+    chunks: list[RetrievedChunk],
+    cited_source_numbers: list[int],
+) -> list[RAGSource]:
+    sources: list[RAGSource] = []
+
+    seen_source_numbers: set[int] = set()
+
+    for source_number in cited_source_numbers:
+        if source_number in seen_source_numbers:
+            continue
+
+        seen_source_numbers.add(source_number)
+
+        chunk = chunks[source_number - 1]
+
+        sources.append(
+            RAGSource(
+                chunk_id=chunk.chunk_id,
+                document_id=chunk.document_id,
+                chunk_index=chunk.chunk_index,
+                score=chunk.score,
+            )
+        )
+
+    return sources
 
 
 def answer_question(
@@ -66,6 +121,7 @@ def answer_question(
                 "I couldn't find sufficiently relevant information "
                 "in the available support documentation."
             ),
+            insufficient_context=True,
             sources=[],
             retrieved_chunks=retrieved_chunks,
         )
@@ -73,28 +129,31 @@ def answer_question(
     context = build_context(relevant_chunks)
 
     try:
-        answer = generate_grounded_answer(
+        llm_output = generate_grounded_answer(
             question=question,
             context=context,
             api_key=openai_api_key,
             model_name=llm_model,
         )
-    except Exception as exc:
-        raise RAGError("Failed to generate RAG answer.") from exc
 
-    sources = [
-        RAGSource(
-            chunk_id=chunk.chunk_id,
-            document_id=chunk.document_id,
-            chunk_index=chunk.chunk_index,
-            score=chunk.score,
+        validate_grounded_output(
+            llm_output=llm_output,
+            chunk_count=len(relevant_chunks),
         )
-        for chunk in retrieved_chunks
-    ]
+    except Exception as exc:
+        print(f"RAG generation error: {type(exc).__name__}: {exc}")
+
+        raise RAGError("Failed to generate grounded RAG answer.") from exc
+
+    sources = build_sources_from_citations(
+        chunks=relevant_chunks,
+        cited_source_numbers=llm_output.cited_source_numbers,
+    )
 
     return RAGResponse(
         question=question,
-        answer=answer,
+        answer=llm_output.answer,
+        insufficient_context=llm_output.insufficient_context,
         sources=sources,
         retrieved_chunks=retrieved_chunks,
     )
