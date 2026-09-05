@@ -1,3 +1,9 @@
+import logging
+import time
+
+from ai_it_support_assistant.core.request_context import (
+    get_request_id,
+)
 from ai_it_support_assistant.schemas.rag import (
     GroundedLLMOutput,
     RAGResponse,
@@ -11,6 +17,8 @@ from ai_it_support_assistant.services.llm_service import (
 from ai_it_support_assistant.services.retrieval_service import (
     retrieve_chunks,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class RAGError(Exception):
@@ -109,6 +117,16 @@ def answer_question(
     openai_timeout_seconds: float,
     openai_max_retries: int,
 ) -> RAGResponse:
+    rag_start = time.perf_counter()
+
+    logger.info(
+        ("rag_started request_id=%s question_length=%s top_k=%s score_threshold=%s"),
+        get_request_id(),
+        len(question),
+        top_k,
+        score_threshold,
+    )
+
     retrieved_chunks = retrieve_chunks(
         query=question,
         top_k=top_k,
@@ -117,13 +135,29 @@ def answer_question(
         collection_name=collection_name,
         qdrant_timeout_seconds=qdrant_timeout_seconds,
         qdrant_max_retries=qdrant_max_attempts,
-        openai_timeout_seconds=openai_timeout_seconds,
-        openai_max_retries=openai_max_retries,
     )
 
     relevant_chunks = [chunk for chunk in retrieved_chunks if chunk.score >= score_threshold]
 
+    logger.info(
+        (
+            "retrieval_filtered "
+            "request_id=%s "
+            "retrieved_count=%s "
+            "relevant_count=%s "
+            "score_threshold=%s"
+        ),
+        get_request_id(),
+        len(retrieved_chunks),
+        len(relevant_chunks),
+        score_threshold,
+    )
+
     if not relevant_chunks:
+        logger.info(
+            ("rag_abstained request_id=%s reason=no_chunks_above_threshold"),
+            get_request_id(),
+        )
         return RAGResponse(
             question=question,
             answer=(
@@ -138,6 +172,8 @@ def answer_question(
     context = build_context(relevant_chunks)
 
     try:
+        llm_start = time.perf_counter()
+
         llm_output = generate_grounded_answer(
             question=question,
             context=context,
@@ -146,11 +182,30 @@ def answer_question(
             timeout_seconds=openai_timeout_seconds,
             max_retries=openai_max_retries,
         )
+        llm_duration_ms = (time.perf_counter() - llm_start) * 1000
 
         validate_grounded_output(
             llm_output=llm_output,
             chunk_count=len(relevant_chunks),
         )
+        logger.info(
+            (
+                "llm_completed "
+                "request_id=%s "
+                "duration_ms=%.2f "
+                "insufficient_context=%s "
+                "citation_count=%s"
+            ),
+            get_request_id(),
+            llm_duration_ms,
+            llm_output.insufficient_context,
+            len(llm_output.cited_source_numbers),
+        )
+        if llm_output.insufficient_context:
+            logger.info(
+                ("rag_abstained request_id=%s reason=insufficient_evidence"),
+                get_request_id(),
+            )
 
     except LLMError:
         raise
@@ -168,6 +223,15 @@ def answer_question(
         cited_source_numbers=llm_output.cited_source_numbers,
     )
 
+    rag_duration_ms = (time.perf_counter() - rag_start) * 1000
+
+    logger.info(
+        ("rag_completed request_id=%s duration_ms=%.2f source_count=%s insufficient_context=%s"),
+        get_request_id(),
+        rag_duration_ms,
+        len(sources),
+        llm_output.insufficient_context,
+    )
     return RAGResponse(
         question=question,
         answer=llm_output.answer,

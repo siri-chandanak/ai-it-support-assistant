@@ -34,8 +34,6 @@ def search_documents(
             collection_name=settings.qdrant_collection_name,
             qdrant_timeout_seconds=settings.qdrant_timeout_seconds,
             qdrant_max_retries=settings.qdrant_max_attempts,
-            openai_timeout_seconds=settings.openai_timeout_seconds,
-            openai_max_retries=settings.openai_max_retries,
         )
     except EmbeddingError as exc:
         raise HTTPException(

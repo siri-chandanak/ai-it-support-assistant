@@ -1,3 +1,4 @@
+import logging
 from functools import lru_cache
 
 from openai import (
@@ -9,7 +10,12 @@ from openai import (
     RateLimitError,
 )
 
+from ai_it_support_assistant.core.request_context import (
+    get_request_id,
+)
 from ai_it_support_assistant.schemas.rag import GroundedLLMOutput
+
+logger = logging.getLogger(__name__)
 
 
 class LLMError(Exception):
@@ -63,6 +69,13 @@ def generate_grounded_answer(
     if not context.strip():
         raise LLMError("RAG context cannot be empty.")
 
+    logger.info(
+        ("llm_request_started request_id=%s model=%s context_characters=%s"),
+        get_request_id(),
+        model_name,
+        len(context),
+    )
+
     client = get_openai_client(
         api_key,
         timeout_seconds,
@@ -113,18 +126,39 @@ Company support context:
             },
         )
     except AuthenticationError as exc:
+        logger.error(
+            "llm_authentication_failed request_id=%s",
+            get_request_id(),
+        )
         raise LLMAuthenticationError("LLM provider authentication failed.") from exc
 
     except RateLimitError as exc:
+        logger.warning(
+            "llm_rate_limited request_id=%s",
+            get_request_id(),
+        )
         raise LLMRateLimitError("LLM provider rate limit exceeded.") from exc
 
     except APITimeoutError as exc:
+        logger.warning(
+            "llm_timeout request_id=%s",
+            get_request_id(),
+        )
         raise LLMTimeoutError("LLM provider request timed out.") from exc
 
     except APIConnectionError as exc:
+        logger.error(
+            "llm_connection_failed request_id=%s",
+            get_request_id(),
+        )
         raise LLMUnavailableError("Unable to connect to LLM provider.") from exc
 
     except APIStatusError as exc:
+        logger.error(
+            "llm_api_status_error request_id=%s status_code=%s",
+            get_request_id(),
+            exc.status_code,
+        )
         raise LLMUnavailableError(f"LLM provider returned status {exc.status_code}.") from exc
 
     except Exception as exc:

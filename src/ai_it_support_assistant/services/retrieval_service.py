@@ -1,3 +1,6 @@
+import logging
+import time
+
 from qdrant_client import QdrantClient
 from tenacity import (
     Retrying,
@@ -5,13 +8,62 @@ from tenacity import (
     wait_exponential,
 )
 
+from ai_it_support_assistant.core.request_context import (
+    get_request_id,
+)
 from ai_it_support_assistant.schemas.retrieval import RetrievedChunk
 from ai_it_support_assistant.services.embedding_service import embed_query
 from ai_it_support_assistant.services.vector_store_service import get_qdrant_client
 
+logger = logging.getLogger(__name__)
+
 
 class RetrievalError(Exception):
     pass
+
+
+def create_qdrant_retryer(
+    max_attempts: int,
+) -> Retrying:
+    return Retrying(
+        stop=stop_after_attempt(max_attempts),
+        wait=wait_exponential(
+            multiplier=1,
+            min=1,
+            max=4,
+        ),
+        reraise=True,
+    )
+
+
+def query_qdrant_with_retry(
+    *,
+    client: QdrantClient,
+    collection_name: str,
+    query_vector: list[float],
+    top_k: int,
+    max_attempts: int,
+):
+    retryer = create_qdrant_retryer(
+        max_attempts=max_attempts,
+    )
+
+    for attempt in retryer:
+        with attempt:
+            attempt_number = attempt.retry_state.attempt_number
+            logger.info(
+                ("qdrant_query_attempt request_id=%s attempt=%s"),
+                get_request_id(),
+                attempt_number,
+            )
+            return client.query_points(
+                collection_name=collection_name,
+                query=query_vector,
+                limit=top_k,
+                with_payload=True,
+            )
+
+    raise RetrievalError("Qdrant retry loop exited unexpectedly.")
 
 
 def retrieve_chunks(
@@ -23,17 +75,34 @@ def retrieve_chunks(
     collection_name: str,
     qdrant_timeout_seconds: float,
     qdrant_max_retries: int,
-    openai_timeout_seconds: float,
-    openai_max_retries: int,
 ) -> list[RetrievedChunk]:
+    logger.info(
+        ("retrieval_started request_id=%s question_length=%s top_k=%s"),
+        get_request_id(),
+        len(query),
+        top_k,
+    )
+
+    embedding_start = time.perf_counter()
+
     query_vector = embed_query(
         query=query,
         model_name=embedding_model_name,
     )
 
+    embedding_duration_ms = (time.perf_counter() - embedding_start) * 1000
+
+    logger.info(
+        ("query_embedding_completed request_id=%s duration_ms=%.2f vector_dimensions=%s"),
+        get_request_id(),
+        embedding_duration_ms,
+        len(query_vector),
+    )
+
     client = get_qdrant_client(qdrant_url, qdrant_timeout_seconds)
 
     try:
+        qdrant_start = time.perf_counter()
         response = query_qdrant_with_retry(
             client=client,
             collection_name=collection_name,
@@ -41,7 +110,22 @@ def retrieve_chunks(
             top_k=top_k,
             max_attempts=qdrant_max_retries,
         )
+        qdrant_duration_ms = (time.perf_counter() - qdrant_start) * 1000
+
+        logger.info(
+            ("qdrant_search_completed request_id=%s duration_ms=%.2f top_k=%s result_count=%s"),
+            get_request_id(),
+            qdrant_duration_ms,
+            top_k,
+            len(response.points),
+        )
+
     except Exception as exc:
+        logger.exception(
+            ("qdrant_search_failed request_id=%s collection=%s"),
+            get_request_id(),
+            collection_name,
+        )
         raise RetrievalError("Failed to query vector store after retrying.") from exc
 
     results: list[RetrievedChunk] = []
@@ -61,49 +145,17 @@ def retrieve_chunks(
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise RetrievalError("Vector store returned invalid chunk metadata.") from exc
+    logger.info(
+        ("retrieval_completed request_id=%s retrieved_count=%s top_score=%s"),
+        get_request_id(),
+        len(results),
+        results[0].score if results else None,
+    )
+
+    logger.debug(
+        ("retrieval_result_metadata request_id=%s chunk_ids=%s"),
+        get_request_id(),
+        [chunk.chunk_id for chunk in results],
+    )
 
     return results
-
-
-def query_qdrant_with_retry(
-    *,
-    client: QdrantClient,
-    collection_name: str,
-    query_vector: list[float],
-    top_k: int,
-    max_attempts: int,
-):
-    retryer = Retrying(
-        stop=stop_after_attempt(max_attempts),
-        wait=wait_exponential(
-            multiplier=1,
-            min=1,
-            max=4,
-        ),
-        reraise=True,
-    )
-
-    for attempt in retryer:
-        with attempt:
-            return client.query_points(
-                collection_name=collection_name,
-                query=query_vector,
-                limit=top_k,
-                with_payload=True,
-            )
-
-    raise RetrievalError("Qdrant retry loop exited unexpectedly.")
-
-
-def create_qdrant_retryer(
-    max_attempts: int,
-) -> Retrying:
-    return Retrying(
-        stop=stop_after_attempt(max_attempts),
-        wait=wait_exponential(
-            multiplier=1,
-            min=1,
-            max=4,
-        ),
-        reraise=True,
-    )

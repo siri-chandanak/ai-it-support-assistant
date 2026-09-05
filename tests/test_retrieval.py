@@ -59,8 +59,6 @@ def test_retrieve_chunks_returns_ranked_results() -> None:
             collection_name="test_chunks",
             qdrant_timeout_seconds=5.0,
             qdrant_max_retries=3,
-            openai_timeout_seconds=10.0,
-            openai_max_retries=2,
         )
 
     assert len(results) == 2
@@ -106,8 +104,6 @@ def test_retrieve_chunks_rejects_invalid_payload() -> None:
                 collection_name="test",
                 qdrant_timeout_seconds=5.0,
                 qdrant_max_retries=3,
-                openai_timeout_seconds=10.0,
-                openai_max_retries=2,
             )
 
 
