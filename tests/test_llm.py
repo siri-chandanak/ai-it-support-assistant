@@ -11,6 +11,8 @@ from ai_it_support_assistant.schemas.rag import (
 )
 from ai_it_support_assistant.services.llm_service import (
     LLMError,
+    LLMRateLimitError,
+    LLMTimeoutError,
     generate_grounded_answer,
     get_openai_client,
 )
@@ -38,6 +40,8 @@ def test_generate_grounded_answer_returns_output_text() -> None:
             context="[Source 1]\nRestart the VPN client.",
             api_key="test-key",
             model_name="test-model",
+            timeout_seconds=10.0,
+            max_retries=3,
         )
 
     assert result.answer == "Restart the VPN client."
@@ -54,7 +58,7 @@ def test_openai_client_requires_api_key() -> None:
         LLMError,
         match="OpenAI API key is not configured",
     ):
-        get_openai_client("")
+        get_openai_client("", 10.0, 3)
 
 
 def test_rag_endpoint_returns_answer() -> None:
@@ -109,4 +113,51 @@ def test_generate_grounded_answer_rejects_invalid_output() -> None:
                 context="[Source 1]\nRestart VPN.",
                 api_key="test-key",
                 model_name="test-model",
+                timeout_seconds=10.0,
+                max_retries=3,
             )
+
+
+def test_openai_client_uses_resilience_settings() -> None:
+    get_openai_client.cache_clear()
+
+    with patch("ai_it_support_assistant.services.llm_service.OpenAI") as mock_openai:
+        get_openai_client(
+            "test-key",
+            25.0,
+            3,
+        )
+
+    mock_openai.assert_called_once_with(
+        api_key="test-key",
+        timeout=25.0,
+        max_retries=3,
+    )
+
+
+def test_rag_endpoint_returns_504_for_llm_timeout() -> None:
+    with patch(
+        "ai_it_support_assistant.api.routes.rag.answer_question",
+        side_effect=LLMTimeoutError("LLM timed out."),
+    ):
+        response = client.post(
+            "/api/v1/rag/answer",
+            json={"question": "How do I fix VPN?"},
+        )
+
+    assert response.status_code == 504
+
+    assert response.json() == {"detail": "Answer generation timed out."}
+
+
+def test_rag_endpoint_handles_llm_rate_limit() -> None:
+    with patch(
+        "ai_it_support_assistant.api.routes.rag.answer_question",
+        side_effect=LLMRateLimitError("Rate limited."),
+    ):
+        response = client.post(
+            "/api/v1/rag/answer",
+            json={"question": "How do I fix VPN?"},
+        )
+
+    assert response.status_code == 503

@@ -27,4 +27,4 @@ Thumbs.db
 # Local application data
 data/*
 !data/evaluation/
-!data/evaluation/results/
+data/evaluation/results/

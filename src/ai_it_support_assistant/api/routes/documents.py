@@ -38,6 +38,7 @@ async def upload_document(
             embedding_model_name=settings.embedding_model_name,
             qdrant_url=settings.qdrant_url,
             qdrant_collection_name=settings.qdrant_collection_name,
+            qdrant_timeout_seconds=settings.qdrant_timeout_seconds,
         )
 
     except InvalidDocumentError as e:

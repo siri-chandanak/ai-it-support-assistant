@@ -102,6 +102,10 @@ def evaluate_case(
         collection_name=settings.qdrant_collection_name,
         openai_api_key=settings.openai_api_key,
         llm_model=settings.llm_model,
+        qdrant_timeout_seconds=settings.qdrant_timeout_seconds,
+        qdrant_max_attempts=settings.qdrant_max_attempts,
+        openai_timeout_seconds=settings.openai_timeout_seconds,
+        openai_max_retries=settings.openai_max_retries,
     )
 
     retrieval_hit = has_expected_document(
@@ -157,6 +161,10 @@ def build_evaluation_summary(
     llm_model: str,
     rag_top_k: int,
     rag_score_threshold: float,
+    qdrant_timeout_seconds: float,
+    qdrant_max_attempts: int,
+    openai_timeout_seconds: float,
+    openai_max_retries: int,
 ) -> EvaluationSummary:
     if not results:
         raise EvaluationError("Cannot summarize empty evaluation results.")
@@ -187,4 +195,8 @@ def build_evaluation_summary(
         llm_model=llm_model,
         rag_top_k=rag_top_k,
         rag_score_threshold=rag_score_threshold,
+        qdrant_timeout_seconds=qdrant_timeout_seconds,
+        qdrant_max_attempts=qdrant_max_attempts,
+        openai_timeout_seconds=openai_timeout_seconds,
+        openai_max_retries=openai_max_retries,
     )

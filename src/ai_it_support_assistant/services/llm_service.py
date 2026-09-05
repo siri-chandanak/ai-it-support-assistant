@@ -1,6 +1,13 @@
 from functools import lru_cache
 
-from openai import OpenAI
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AuthenticationError,
+    OpenAI,
+    RateLimitError,
+)
 
 from ai_it_support_assistant.schemas.rag import GroundedLLMOutput
 
@@ -9,12 +16,36 @@ class LLMError(Exception):
     pass
 
 
+class LLMTimeoutError(LLMError):
+    pass
+
+
+class LLMRateLimitError(LLMError):
+    pass
+
+
+class LLMAuthenticationError(LLMError):
+    pass
+
+
+class LLMUnavailableError(LLMError):
+    pass
+
+
 @lru_cache
-def get_openai_client(api_key: str) -> OpenAI:
+def get_openai_client(
+    api_key: str,
+    timeout_seconds: float,
+    max_retries: int,
+) -> OpenAI:
     if not api_key.strip():
         raise LLMError("OpenAI API key is not configured.")
 
-    return OpenAI(api_key=api_key)
+    return OpenAI(
+        api_key=api_key,
+        timeout=timeout_seconds,
+        max_retries=max_retries,
+    )
 
 
 def generate_grounded_answer(
@@ -23,6 +54,8 @@ def generate_grounded_answer(
     context: str,
     api_key: str,
     model_name: str,
+    timeout_seconds: float,
+    max_retries: int,
 ) -> GroundedLLMOutput:
     if not question.strip():
         raise LLMError("Question cannot be empty.")
@@ -30,7 +63,11 @@ def generate_grounded_answer(
     if not context.strip():
         raise LLMError("RAG context cannot be empty.")
 
-    client = get_openai_client(api_key)
+    client = get_openai_client(
+        api_key,
+        timeout_seconds,
+        max_retries,
+    )
 
     instructions = """
 You are an AI IT Support Assistant.
@@ -75,6 +112,21 @@ Company support context:
                 }
             },
         )
+    except AuthenticationError as exc:
+        raise LLMAuthenticationError("LLM provider authentication failed.") from exc
+
+    except RateLimitError as exc:
+        raise LLMRateLimitError("LLM provider rate limit exceeded.") from exc
+
+    except APITimeoutError as exc:
+        raise LLMTimeoutError("LLM provider request timed out.") from exc
+
+    except APIConnectionError as exc:
+        raise LLMUnavailableError("Unable to connect to LLM provider.") from exc
+
+    except APIStatusError as exc:
+        raise LLMUnavailableError(f"LLM provider returned status {exc.status_code}.") from exc
+
     except Exception as exc:
         print(f"OpenAI API error: {type(exc).__name__}: {exc}")
 

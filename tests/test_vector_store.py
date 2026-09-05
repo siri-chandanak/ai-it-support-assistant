@@ -34,6 +34,7 @@ def test_store_chunk_vectors_upserts_points() -> None:
             embeddings=embeddings,
             qdrant_url="http://test-qdrant:6333",
             collection_name="test_chunks",
+            qdrant_timeout_seconds=10.0,
         )
 
     assert stored_count == 1
@@ -63,4 +64,5 @@ def test_store_chunk_vectors_rejects_mismatched_counts() -> None:
             ],
             qdrant_url="http://localhost:6333",
             collection_name="test_chunks",
+            qdrant_timeout_seconds=10.0,
         )
