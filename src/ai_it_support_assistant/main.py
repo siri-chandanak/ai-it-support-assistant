@@ -1,14 +1,20 @@
 from fastapi import FastAPI
 
+from ai_it_support_assistant.api.middleware.request_context import (
+    RequestContextMiddleware,
+)
 from ai_it_support_assistant.api.routes.documents import router as documents_router
 from ai_it_support_assistant.api.routes.health import router as health_router
 from ai_it_support_assistant.api.routes.rag import router as rag_router
 from ai_it_support_assistant.api.routes.retrieval import router as retrieval_router
 from ai_it_support_assistant.core.config import get_settings
+from ai_it_support_assistant.core.logging import configure_logging
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
+
+    configure_logging(log_level=settings.log_level)
 
     app = FastAPI(
         title=settings.app_name,
@@ -16,6 +22,7 @@ def create_app() -> FastAPI:
         version=settings.app_version,
         debug=settings.debug,
     )
+    app.add_middleware(RequestContextMiddleware)
 
     # Include the health check router
     app.include_router(health_router, prefix="/api/v1", tags=["health"])
