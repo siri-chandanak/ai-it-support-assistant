@@ -82,6 +82,10 @@ def test_answer_question_generates_grounded_response() -> None:
             collection_name="test_chunks",
             openai_api_key="test-key",
             llm_model="test-llm",
+            qdrant_timeout_seconds=5.0,
+            qdrant_max_attempts=3,
+            openai_timeout_seconds=10.0,
+            openai_max_retries=2,
         )
 
     assert response.question == "How do I fix the VPN?"
@@ -108,6 +112,10 @@ def test_answer_question_abstains_when_no_chunks_found() -> None:
             collection_name="test",
             openai_api_key="test-key",
             llm_model="test-llm",
+            qdrant_timeout_seconds=5.0,
+            qdrant_max_attempts=3,
+            openai_timeout_seconds=10.0,
+            openai_max_retries=2,
         )
 
     assert response.sources == []
@@ -135,6 +143,10 @@ def test_llm_is_not_called_when_no_chunks_found() -> None:
             collection_name="test",
             openai_api_key="test-key",
             llm_model="test-llm",
+            qdrant_timeout_seconds=5.0,
+            qdrant_max_attempts=3,
+            openai_timeout_seconds=10.0,
+            openai_max_retries=2,
         )
 
     mock_generate.assert_not_called()
@@ -169,6 +181,10 @@ def test_answer_question_abstains_below_threshold() -> None:
             collection_name="test",
             openai_api_key="test-key",
             llm_model="test-model",
+            qdrant_timeout_seconds=5.0,
+            qdrant_max_attempts=3,
+            openai_timeout_seconds=10.0,
+            openai_max_retries=2,
         )
 
     assert response.sources == []

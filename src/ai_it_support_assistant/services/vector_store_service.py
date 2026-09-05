@@ -11,8 +11,8 @@ class VectorStoreError(Exception):
 
 
 @lru_cache
-def get_qdrant_client(qdrant_url: str) -> QdrantClient:
-    return QdrantClient(url=qdrant_url)
+def get_qdrant_client(qdrant_url: str, timeout_seconds: float) -> QdrantClient:
+    return QdrantClient(url=qdrant_url, timeout=timeout_seconds)
 
 
 def ensure_collection(
@@ -44,6 +44,7 @@ def store_chunk_vectors(
     embeddings: list[list[float]],
     qdrant_url: str,
     collection_name: str,
+    qdrant_timeout_seconds: float,
 ) -> int:
     if not chunks:
         raise VectorStoreError("Cannot store an empty chunk list.")
@@ -54,7 +55,7 @@ def store_chunk_vectors(
     if not embeddings or not embeddings[0]:
         raise VectorStoreError("Embeddings cannot be empty.")
 
-    client = get_qdrant_client(qdrant_url)
+    client = get_qdrant_client(qdrant_url, qdrant_timeout_seconds)
 
     vector_size = len(embeddings[0])
 

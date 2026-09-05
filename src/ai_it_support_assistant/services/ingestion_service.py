@@ -19,6 +19,7 @@ async def ingest_document(
     embedding_model_name: str,
     qdrant_url: str,
     qdrant_collection_name: str,
+    qdrant_timeout_seconds: float,
 ) -> tuple[ExtractedDocument, int, int]:
     document_id, stored_path, size_bytes = await save_document(
         file=file,
@@ -45,6 +46,7 @@ async def ingest_document(
             embeddings=embeddings,
             qdrant_url=qdrant_url,
             collection_name=qdrant_collection_name,
+            qdrant_timeout_seconds=qdrant_timeout_seconds,
         )
 
     except Exception:

@@ -5,6 +5,7 @@ from ai_it_support_assistant.schemas.rag import (
 )
 from ai_it_support_assistant.schemas.retrieval import RetrievedChunk
 from ai_it_support_assistant.services.llm_service import (
+    LLMError,
     generate_grounded_answer,
 )
 from ai_it_support_assistant.services.retrieval_service import (
@@ -103,6 +104,10 @@ def answer_question(
     collection_name: str,
     openai_api_key: str,
     llm_model: str,
+    qdrant_timeout_seconds: float,
+    qdrant_max_attempts: int,
+    openai_timeout_seconds: float,
+    openai_max_retries: int,
 ) -> RAGResponse:
     retrieved_chunks = retrieve_chunks(
         query=question,
@@ -110,6 +115,10 @@ def answer_question(
         embedding_model_name=embedding_model_name,
         qdrant_url=qdrant_url,
         collection_name=collection_name,
+        qdrant_timeout_seconds=qdrant_timeout_seconds,
+        qdrant_max_retries=qdrant_max_attempts,
+        openai_timeout_seconds=openai_timeout_seconds,
+        openai_max_retries=openai_max_retries,
     )
 
     relevant_chunks = [chunk for chunk in retrieved_chunks if chunk.score >= score_threshold]
@@ -134,12 +143,21 @@ def answer_question(
             context=context,
             api_key=openai_api_key,
             model_name=llm_model,
+            timeout_seconds=openai_timeout_seconds,
+            max_retries=openai_max_retries,
         )
 
         validate_grounded_output(
             llm_output=llm_output,
             chunk_count=len(relevant_chunks),
         )
+
+    except LLMError:
+        raise
+
+    except RAGError:
+        raise
+
     except Exception as exc:
         print(f"RAG generation error: {type(exc).__name__}: {exc}")
 

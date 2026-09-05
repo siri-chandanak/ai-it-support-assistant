@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     rag_top_k: int = 3
     rag_score_threshold: float = 0.4
 
+    qdrant_timeout_seconds: float = 10.0
+    qdrant_max_attempts: int = 3
+
+    openai_timeout_seconds: float = 30.0
+    openai_max_retries: int = 2
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

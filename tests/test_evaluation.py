@@ -144,6 +144,10 @@ def test_evaluate_case_for_successful_answer() -> None:
         qdrant_collection_name="document_chunks",
         openai_api_key="fake-key",
         llm_model="fake-model",
+        qdrant_timeout_seconds=5.0,
+        qdrant_max_attempts=3,
+        openai_timeout_seconds=10.0,
+        openai_max_retries=2,
     )
 
     with patch(
@@ -187,6 +191,10 @@ def test_evaluate_case_for_correct_abstention() -> None:
         qdrant_collection_name="document_chunks",
         openai_api_key="fake-key",
         llm_model="fake-model",
+        qdrant_timeout_seconds=5.0,
+        qdrant_max_attempts=3,
+        openai_timeout_seconds=10.0,
+        openai_max_retries=2,
     )
 
     with patch(

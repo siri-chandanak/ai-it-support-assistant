@@ -29,6 +29,10 @@ def main() -> None:
         llm_model=settings.llm_model,
         rag_top_k=settings.rag_top_k,
         rag_score_threshold=settings.rag_score_threshold,
+        qdrant_timeout_seconds=settings.qdrant_timeout_seconds,
+        qdrant_max_attempts=settings.qdrant_max_attempts,
+        openai_timeout_seconds=settings.openai_timeout_seconds,
+        openai_max_retries=settings.openai_max_retries,
     )
 
     output = json.dumps(

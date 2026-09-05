@@ -43,6 +43,7 @@ async def test_ingestion_creates_chunks(tmp_path: Path) -> None:
                 embedding_model_name="test-model",
                 qdrant_url="http://localhost:6333",
                 qdrant_collection_name="test_chunks",
+                qdrant_timeout_seconds=5.0,
             )
 
     assert size_bytes == 2500

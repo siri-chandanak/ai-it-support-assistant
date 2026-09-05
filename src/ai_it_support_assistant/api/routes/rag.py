@@ -8,6 +8,12 @@ from ai_it_support_assistant.schemas.rag import (
 from ai_it_support_assistant.services.embedding_service import (
     EmbeddingError,
 )
+from ai_it_support_assistant.services.llm_service import (
+    LLMAuthenticationError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+    LLMUnavailableError,
+)
 from ai_it_support_assistant.services.rag_service import (
     RAGError,
     answer_question,
@@ -38,6 +44,10 @@ def rag_answer(
             collection_name=settings.qdrant_collection_name,
             openai_api_key=settings.openai_api_key,
             llm_model=settings.llm_model,
+            qdrant_timeout_seconds=settings.qdrant_timeout_seconds,
+            qdrant_max_attempts=settings.qdrant_max_attempts,
+            openai_timeout_seconds=settings.openai_timeout_seconds,
+            openai_max_retries=settings.openai_max_retries,
         )
     except EmbeddingError as exc:
         raise HTTPException(
@@ -53,4 +63,28 @@ def rag_answer(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Answer generation failed.",
+        ) from exc
+
+    except LLMAuthenticationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Answer service is misconfigured.",
+        ) from exc
+
+    except LLMRateLimitError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Answer service is temporarily capacity-limited.",
+        ) from exc
+
+    except LLMTimeoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Answer generation timed out.",
+        ) from exc
+
+    except LLMUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Answer service is temporarily unavailable.",
         ) from exc

@@ -45,3 +45,8 @@ class EvaluationSummary(BaseModel):
     llm_model: str
     rag_top_k: int
     rag_score_threshold: float
+
+    qdrant_timeout_seconds: float
+    qdrant_max_attempts: int
+    openai_timeout_seconds: float
+    openai_max_retries: int
