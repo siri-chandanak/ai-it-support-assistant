@@ -32,6 +32,14 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    embedding_cache_enabled: bool = True
+    embedding_cache_ttl_seconds: int = 3600
+    embedding_cache_max_size: int = 1000
+
+    retrieval_cache_enabled: bool = True
+    retrieval_cache_ttl_seconds: int = 300
+    retrieval_cache_max_size: int = 1000
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

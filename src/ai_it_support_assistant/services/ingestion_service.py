@@ -1,5 +1,8 @@
 from fastapi import UploadFile
 
+from ai_it_support_assistant.cache.cache_service import (
+    clear_retrieval_cache,
+)
 from ai_it_support_assistant.schemas.document import ExtractedDocument
 from ai_it_support_assistant.services.chunking_service import chunk_text
 from ai_it_support_assistant.services.document_service import save_document
@@ -48,6 +51,8 @@ async def ingest_document(
             collection_name=qdrant_collection_name,
             qdrant_timeout_seconds=qdrant_timeout_seconds,
         )
+
+        clear_retrieval_cache()
 
     except Exception:
         stored_path.unlink(missing_ok=True)

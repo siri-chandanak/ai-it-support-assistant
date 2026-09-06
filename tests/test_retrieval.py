@@ -8,6 +8,12 @@ from tenacity import (
     wait_none,
 )
 
+from ai_it_support_assistant.cache.cache_service import (
+    build_retrieval_cache_key,
+    configure_retrieval_cache,
+    set_cached_retrieval,
+)
+from ai_it_support_assistant.schemas.retrieval import RetrievedChunk
 from ai_it_support_assistant.services.retrieval_service import (
     RetrievalError,
     query_qdrant_with_retry,
@@ -55,6 +61,8 @@ def test_retrieve_chunks_returns_ranked_results() -> None:
             query="VPN login issue",
             top_k=2,
             embedding_model_name="test-model",
+            embedding_cache_enabled=False,
+            retrieval_cache_enabled=False,
             qdrant_url="http://test-qdrant:6333",
             collection_name="test_chunks",
             qdrant_timeout_seconds=5.0,
@@ -100,6 +108,8 @@ def test_retrieve_chunks_rejects_invalid_payload() -> None:
                 query="VPN issue",
                 top_k=3,
                 embedding_model_name="test-model",
+                embedding_cache_enabled=False,
+                retrieval_cache_enabled=False,
                 qdrant_url="http://test",
                 collection_name="test",
                 qdrant_timeout_seconds=5.0,
@@ -164,3 +174,158 @@ def test_qdrant_query_fails_after_max_attempts() -> None:
             )
 
     assert mock_client.query_points.call_count == 3
+
+
+def test_retrieve_chunks_uses_retrieval_cache() -> None:
+    configure_retrieval_cache(
+        max_size=100,
+        ttl_seconds=300,
+    )
+
+    query = "How do I restart VPN?"
+    model_name = "test-model"
+    collection_name = "document_chunks"
+    top_k = 5
+
+    cached_chunks = [
+        RetrievedChunk(
+            chunk_id="doc:0",
+            document_id="doc",
+            chunk_index=0,
+            text="VPN instructions",
+            score=0.9,
+        )
+    ]
+
+    cache_key = build_retrieval_cache_key(
+        query=query,
+        model_name=model_name,
+        collection_name=collection_name,
+        top_k=top_k,
+    )
+
+    set_cached_retrieval(
+        key=cache_key,
+        chunks=cached_chunks,
+    )
+
+    query = "How do I restart VPN?"
+    model_name = "test-model"
+    collection_name = "document_chunks"
+    top_k = 5
+
+    cached_chunks = [
+        RetrievedChunk(
+            chunk_id="doc:0",
+            document_id="doc",
+            chunk_index=0,
+            text="VPN instructions",
+            score=0.9,
+        )
+    ]
+
+    cache_key = build_retrieval_cache_key(
+        query=query,
+        model_name=model_name,
+        collection_name=collection_name,
+        top_k=top_k,
+    )
+
+    set_cached_retrieval(
+        key=cache_key,
+        chunks=cached_chunks,
+    )
+
+    with (
+        patch("ai_it_support_assistant.services.retrieval_service.embed_query") as mock_embed_query,
+        patch(
+            "ai_it_support_assistant.services.retrieval_service.get_qdrant_client"
+        ) as mock_qdrant_client,
+    ):
+        results = retrieve_chunks(
+            query=query,
+            embedding_model_name=model_name,
+            embedding_cache_enabled=False,
+            retrieval_cache_enabled=True,
+            collection_name=collection_name,
+            top_k=top_k,
+            qdrant_url="http://localhost:6333",
+            qdrant_timeout_seconds=5.0,
+            qdrant_max_retries=1,
+        )
+
+    assert results == cached_chunks
+    mock_embed_query.assert_not_called()
+    mock_qdrant_client.assert_not_called()
+
+
+def test_retrieve_chunks_caches_qdrant_results() -> None:
+    configure_retrieval_cache(
+        max_size=100,
+        ttl_seconds=300,
+    )
+
+    query = "How do I restart VPN?"
+    model_name = "test-model"
+    collection_name = "document_chunks"
+    top_k = 5
+
+    fake_vector = [0.1, 0.2, 0.3]
+
+    mock_point = MagicMock()
+    mock_point.id = "doc:0"
+    mock_point.score = 0.9
+    mock_point.payload = {
+        "chunk_id": "doc:0",
+        "document_id": "doc",
+        "chunk_index": 0,
+        "text": "VPN instructions",
+    }
+
+    mock_query_response = MagicMock()
+    mock_query_response.points = [mock_point]
+
+    mock_qdrant_client = MagicMock()
+    mock_qdrant_client.query_points.return_value = mock_query_response
+
+    with (
+        patch(
+            "ai_it_support_assistant.services.retrieval_service.embed_query",
+            return_value=fake_vector,
+        ) as mock_embed_query,
+        patch(
+            "ai_it_support_assistant.services.retrieval_service.get_qdrant_client",
+            return_value=mock_qdrant_client,
+        ) as mock_get_qdrant_client,
+    ):
+        first_results = retrieve_chunks(
+            query=query,
+            embedding_model_name=model_name,
+            embedding_cache_enabled=False,
+            retrieval_cache_enabled=True,
+            collection_name=collection_name,
+            top_k=top_k,
+            qdrant_url="http://localhost:6333",
+            qdrant_timeout_seconds=5.0,
+            qdrant_max_retries=1,
+        )
+
+        second_results = retrieve_chunks(
+            query=query,
+            embedding_model_name=model_name,
+            embedding_cache_enabled=False,
+            retrieval_cache_enabled=True,
+            collection_name=collection_name,
+            top_k=top_k,
+            qdrant_url="http://localhost:6333",
+            qdrant_timeout_seconds=5.0,
+            qdrant_max_retries=1,
+        )
+
+    assert first_results == second_results
+
+    mock_embed_query.assert_called_once()
+
+    mock_get_qdrant_client.assert_called_once()
+
+    mock_qdrant_client.query_points.assert_called_once()

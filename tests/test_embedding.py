@@ -3,6 +3,11 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from ai_it_support_assistant.cache.cache_service import (
+    build_embedding_cache_key,
+    configure_embedding_cache,
+    set_cached_embedding,
+)
 from ai_it_support_assistant.schemas.document import DocumentChunk
 from ai_it_support_assistant.services.embedding_service import (
     EmbeddingError,
@@ -77,6 +82,7 @@ def test_embed_query_returns_vector() -> None:
         vector = embed_query(
             query="How do I restart VPN?",
             model_name="test-model",
+            cache_enabled=False,
         )
 
     assert vector == [0.1, 0.2, 0.3]
@@ -95,4 +101,38 @@ def test_embed_query_rejects_empty_query() -> None:
         embed_query(
             query="   ",
             model_name="test-model",
+            cache_enabled=False,
         )
+
+
+def test_embed_query_uses_cache() -> None:
+    configure_embedding_cache(
+        max_size=100,
+        ttl_seconds=300,
+    )
+    query = "How do I restart VPN?"
+    model_name = "test-model"
+
+    cache_key = build_embedding_cache_key(
+        query=query,
+        model_name=model_name,
+    )
+
+    expected_vector = [0.1, 0.2, 0.3]
+
+    set_cached_embedding(
+        key=cache_key,
+        embedding=expected_vector,
+    )
+
+    with patch(
+        "ai_it_support_assistant.services.embedding_service.get_embedding_model"
+    ) as mock_model_loader:
+        vector = embed_query(
+            query=query,
+            model_name=model_name,
+            cache_enabled=True,
+        )
+
+    assert vector == expected_vector
+    mock_model_loader.assert_not_called()

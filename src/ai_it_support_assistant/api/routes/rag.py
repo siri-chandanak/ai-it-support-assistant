@@ -40,6 +40,8 @@ def rag_answer(
             top_k=settings.rag_top_k,
             score_threshold=settings.rag_score_threshold,
             embedding_model_name=settings.embedding_model_name,
+            embedding_cache_enabled=settings.embedding_cache_enabled,
+            retrieval_cache_enabled=settings.retrieval_cache_enabled,
             qdrant_url=settings.qdrant_url,
             collection_name=settings.qdrant_collection_name,
             openai_api_key=settings.openai_api_key,
