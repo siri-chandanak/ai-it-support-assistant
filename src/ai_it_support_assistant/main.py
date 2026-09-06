@@ -7,6 +7,10 @@ from ai_it_support_assistant.api.routes.documents import router as documents_rou
 from ai_it_support_assistant.api.routes.health import router as health_router
 from ai_it_support_assistant.api.routes.rag import router as rag_router
 from ai_it_support_assistant.api.routes.retrieval import router as retrieval_router
+from ai_it_support_assistant.cache.cache_service import (
+    configure_embedding_cache,
+    configure_retrieval_cache,
+)
 from ai_it_support_assistant.core.config import get_settings
 from ai_it_support_assistant.core.logging import configure_logging
 
@@ -15,6 +19,16 @@ def create_app() -> FastAPI:
     settings = get_settings()
 
     configure_logging(log_level=settings.log_level)
+
+    configure_embedding_cache(
+        max_size=settings.embedding_cache_max_size,
+        ttl_seconds=settings.embedding_cache_ttl_seconds,
+    )
+
+    configure_retrieval_cache(
+        max_size=settings.retrieval_cache_max_size,
+        ttl_seconds=settings.retrieval_cache_ttl_seconds,
+    )
 
     app = FastAPI(
         title=settings.app_name,

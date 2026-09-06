@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "cachetools>=7.1.8",
     "fastapi>=0.141.1",
     "openai>=3.7.0",
     "pydantic-settings>=2.15.0",

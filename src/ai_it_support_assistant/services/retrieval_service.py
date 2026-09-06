@@ -8,6 +8,11 @@ from tenacity import (
     wait_exponential,
 )
 
+from ai_it_support_assistant.cache.cache_service import (
+    build_retrieval_cache_key,
+    get_cached_retrieval,
+    set_cached_retrieval,
+)
 from ai_it_support_assistant.core.request_context import (
     get_request_id,
 )
@@ -71,6 +76,8 @@ def retrieve_chunks(
     query: str,
     top_k: int,
     embedding_model_name: str,
+    embedding_cache_enabled: bool,
+    retrieval_cache_enabled: bool,
     qdrant_url: str,
     collection_name: str,
     qdrant_timeout_seconds: float,
@@ -85,9 +92,34 @@ def retrieve_chunks(
 
     embedding_start = time.perf_counter()
 
+    retrieval_cache_key = build_retrieval_cache_key(
+        query=query,
+        model_name=embedding_model_name,
+        collection_name=collection_name,
+        top_k=top_k,
+    )
+
+    if retrieval_cache_enabled:
+        cached_results = get_cached_retrieval(retrieval_cache_key)
+
+        if cached_results is not None:
+            logger.info(
+                ("retrieval_cache_hit request_id=%s result_count=%s"),
+                get_request_id(),
+                len(cached_results),
+            )
+
+            return cached_results
+
+        logger.info(
+            ("retrieval_cache_miss request_id=%s"),
+            get_request_id(),
+        )
+
     query_vector = embed_query(
         query=query,
         model_name=embedding_model_name,
+        cache_enabled=embedding_cache_enabled,
     )
 
     embedding_duration_ms = (time.perf_counter() - embedding_start) * 1000
@@ -157,5 +189,11 @@ def retrieve_chunks(
         get_request_id(),
         [chunk.chunk_id for chunk in results],
     )
+
+    if retrieval_cache_enabled and results:
+        set_cached_retrieval(
+            key=retrieval_cache_key,
+            chunks=results,
+        )
 
     return results
