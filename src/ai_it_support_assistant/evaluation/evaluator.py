@@ -108,6 +108,7 @@ def evaluate_case(
         qdrant_max_attempts=settings.qdrant_max_attempts,
         openai_timeout_seconds=settings.openai_timeout_seconds,
         openai_max_retries=settings.openai_max_retries,
+        user_roles=["admin"],
     )
 
     retrieval_hit = has_expected_document(
