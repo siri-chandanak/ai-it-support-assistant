@@ -1,0 +1,4 @@
+RESTRICTED_IT_CANARY_8F92A1
+
+Production VPN recovery requires clearing
+the secure credential cache.

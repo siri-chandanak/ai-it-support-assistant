@@ -50,3 +50,62 @@ class EvaluationSummary(BaseModel):
     qdrant_max_attempts: int
     openai_timeout_seconds: float
     openai_max_retries: int
+
+
+class AuthorizationEvaluationCase(BaseModel):
+    case_id: str
+    question: str
+
+    user_roles: list[str] = Field(
+        min_length=1,
+    )
+
+    expected_allowed_document_ids: list[str] = Field(
+        default_factory=list,
+    )
+
+    forbidden_document_ids: list[str] = Field(
+        default_factory=list,
+    )
+
+    forbidden_text_fragments: list[str] = Field(
+        default_factory=list,
+    )
+
+    should_answer: bool
+
+
+class AuthorizationEvaluationResult(BaseModel):
+    case_id: str
+    question: str
+    user_roles: list[str]
+
+    authorized_retrieval_hit: bool
+
+    unauthorized_document_leak: bool
+    unauthorized_text_leak: bool
+    citation_leak: bool
+
+    expected_behavior: str
+    actual_behavior: str
+    behavior_correct: bool
+
+    passed: bool
+
+
+class AuthorizationEvaluationSummary(BaseModel):
+    total_cases: int
+
+    passed_cases: int
+    failed_cases: int
+
+    pass_rate: float
+
+    unauthorized_document_leak_count: int
+    unauthorized_text_leak_count: int
+    citation_leak_count: int
+
+    authorized_retrieval_rate: float
+    behavior_accuracy: float
+
+    results: list[AuthorizationEvaluationResult]

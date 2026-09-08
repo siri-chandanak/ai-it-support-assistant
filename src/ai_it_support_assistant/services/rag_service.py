@@ -56,6 +56,19 @@ def validate_cited_sources(
             raise RAGError(f"LLM cited invalid source number: {source_number}")
 
 
+def normalize_grounded_output(
+    output: GroundedLLMOutput,
+) -> GroundedLLMOutput:
+    if output.insufficient_context and output.cited_source_numbers:
+        return output.model_copy(
+            update={
+                "cited_source_numbers": [],
+            }
+        )
+
+    return output
+
+
 def validate_grounded_output(
     *,
     llm_output: GroundedLLMOutput,
@@ -118,6 +131,7 @@ def answer_question(
     qdrant_max_attempts: int,
     openai_timeout_seconds: float,
     openai_max_retries: int,
+    user_roles: list[str],
 ) -> RAGResponse:
     rag_start = time.perf_counter()
 
@@ -139,6 +153,7 @@ def answer_question(
         collection_name=collection_name,
         qdrant_timeout_seconds=qdrant_timeout_seconds,
         qdrant_max_retries=qdrant_max_attempts,
+        user_roles=user_roles,
     )
 
     relevant_chunks = [chunk for chunk in retrieved_chunks if chunk.score >= score_threshold]
@@ -187,7 +202,7 @@ def answer_question(
             max_retries=openai_max_retries,
         )
         llm_duration_ms = (time.perf_counter() - llm_start) * 1000
-
+        llm_output = normalize_grounded_output(llm_output)
         validate_grounded_output(
             llm_output=llm_output,
             chunk_count=len(relevant_chunks),
