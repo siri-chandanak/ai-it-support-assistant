@@ -40,6 +40,14 @@ class Settings(BaseSettings):
     retrieval_cache_ttl_seconds: int = 300
     retrieval_cache_max_size: int = 1000
 
+    database_url: str = (
+        "postgresql+psycopg://ai_support:ai_support_local_password@localhost:5432/ai_support"
+    )
+
+    jwt_secret_key: str = ""
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

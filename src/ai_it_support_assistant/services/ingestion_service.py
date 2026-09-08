@@ -23,6 +23,7 @@ async def ingest_document(
     qdrant_url: str,
     qdrant_collection_name: str,
     qdrant_timeout_seconds: float,
+    allowed_roles: list[str],
 ) -> tuple[ExtractedDocument, int, int]:
     document_id, stored_path, size_bytes = await save_document(
         file=file,
@@ -37,6 +38,7 @@ async def ingest_document(
             text=text,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
+            allowed_roles=allowed_roles,
         )
 
         embeddings = embed_chunks(

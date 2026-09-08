@@ -5,11 +5,15 @@ from fastapi.testclient import TestClient
 
 from ai_it_support_assistant.core.config import get_settings
 from ai_it_support_assistant.main import app
+from ai_it_support_assistant.services.retrieval_service import build_retrieval_cache_key
 
 client = TestClient(app)
 
 
-def test_upload_text_document(tmp_path: Path) -> None:
+def test_upload_text_document(
+    tmp_path: Path,
+    admin_auth_override: None,
+) -> None:
     settings = get_settings()
 
     original_storage_path = settings.document_storage_path
@@ -35,6 +39,7 @@ def test_upload_text_document(tmp_path: Path) -> None:
                         "text/plain",
                     )
                 },
+                data={"allowed_roles_raw": ("reader,it_support,admin")},
             )
     finally:
         settings.document_storage_path = original_storage_path
@@ -50,7 +55,10 @@ def test_upload_text_document(tmp_path: Path) -> None:
     assert body["status"] == "indexed"
 
 
-def test_reject_unsupported_document_type(tmp_path: Path) -> None:
+def test_reject_unsupported_document_type(
+    tmp_path: Path,
+    admin_auth_override: None,
+) -> None:
     settings = get_settings()
     original_storage_path = settings.document_storage_path
 
@@ -73,7 +81,7 @@ def test_reject_unsupported_document_type(tmp_path: Path) -> None:
     assert "Unsupported file type" in response.json()["detail"]
 
 
-def test_reject_document_with_no_usable_text(tmp_path: Path) -> None:
+def test_reject_document_with_no_usable_text(tmp_path: Path, admin_auth_override: None) -> None:
     settings = get_settings()
     original_storage_path = settings.document_storage_path
 
@@ -97,3 +105,23 @@ def test_reject_document_with_no_usable_text(tmp_path: Path) -> None:
     assert "no usable text" in response.json()["detail"]
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_retrieval_cache_key_is_role_specific() -> None:
+    admin_key = build_retrieval_cache_key(
+        query="VPN",
+        model_name="embedding-model",
+        collection_name="document_chunks",
+        top_k=3,
+        user_roles=["admin"],
+    )
+
+    reader_key = build_retrieval_cache_key(
+        query="VPN",
+        model_name="embedding-model",
+        collection_name="document_chunks",
+        top_k=3,
+        user_roles=["reader"],
+    )
+
+    assert admin_key != reader_key

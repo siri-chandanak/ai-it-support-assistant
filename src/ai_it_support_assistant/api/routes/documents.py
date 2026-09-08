@@ -1,20 +1,46 @@
 from typing import Annotated
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 
+from ai_it_support_assistant.api.dependencies.auth import (
+    require_role,
+)
 from ai_it_support_assistant.core.config import get_settings
-from ai_it_support_assistant.schemas.document import DocumentUploadResponse
-from ai_it_support_assistant.services.chunking_service import ChunkingError
+from ai_it_support_assistant.schemas.auth import User
+from ai_it_support_assistant.schemas.document import (
+    DocumentUploadResponse,
+)
+from ai_it_support_assistant.services.authorization_service import (
+    AuthorizationConfigurationError,
+    validate_allowed_roles,
+)
+from ai_it_support_assistant.services.chunking_service import (
+    ChunkingError,
+)
 from ai_it_support_assistant.services.document_service import (
     DocumentTooLargeError,
     InvalidDocumentError,
 )
-from ai_it_support_assistant.services.embedding_service import EmbeddingError
-from ai_it_support_assistant.services.ingestion_service import ingest_document
+from ai_it_support_assistant.services.embedding_service import (
+    EmbeddingError,
+)
+from ai_it_support_assistant.services.ingestion_service import (
+    ingest_document,
+)
 from ai_it_support_assistant.services.text_extraction_service import (
     TextExtractionError,
 )
-from ai_it_support_assistant.services.vector_store_service import VectorStoreError
+from ai_it_support_assistant.services.vector_store_service import (
+    VectorStoreError,
+)
 
 router = APIRouter()
 
@@ -25,55 +51,77 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_document(
-    file: Annotated[UploadFile, File()],
+    file: Annotated[
+        UploadFile,
+        File(),
+    ],
+    _current_user: Annotated[
+        User,
+        Depends(require_role("admin")),
+    ],
+    allowed_roles_raw: Annotated[
+        str,
+        Form(),
+    ] = "reader,it_support,admin",
 ) -> DocumentUploadResponse:
     settings = get_settings()
 
+    allowed_roles = [role.strip() for role in allowed_roles_raw.split(",") if role.strip()]
+
     try:
+        allowed_roles = validate_allowed_roles(allowed_roles)
+
         document, size_bytes, indexed_chunk_count = await ingest_document(
             file=file,
-            storage_path=settings.document_storage_path,
+            storage_path=(settings.document_storage_path),
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
-            embedding_model_name=settings.embedding_model_name,
+            embedding_model_name=(settings.embedding_model_name),
             qdrant_url=settings.qdrant_url,
-            qdrant_collection_name=settings.qdrant_collection_name,
-            qdrant_timeout_seconds=settings.qdrant_timeout_seconds,
+            qdrant_collection_name=(settings.qdrant_collection_name),
+            qdrant_timeout_seconds=(settings.qdrant_timeout_seconds),
+            allowed_roles=allowed_roles,
         )
 
-    except InvalidDocumentError as e:
+    except AuthorizationConfigurationError as exc:
+        raise HTTPException(
+            status_code=(status.HTTP_422_UNPROCESSABLE_CONTENT),
+            detail=str(exc),
+        ) from exc
+
+    except InvalidDocumentError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
+            detail=str(exc),
+        ) from exc
 
-    except DocumentTooLargeError as e:
+    except DocumentTooLargeError as exc:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=str(e),
-        ) from e
+            status_code=(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE),
+            detail=str(exc),
+        ) from exc
 
     except TextExtractionError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=(status.HTTP_422_UNPROCESSABLE_CONTENT),
             detail=str(exc),
         ) from exc
 
     except ChunkingError as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=(status.HTTP_500_INTERNAL_SERVER_ERROR),
             detail="Document chunking failed.",
         ) from exc
 
     except EmbeddingError as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=(status.HTTP_500_INTERNAL_SERVER_ERROR),
             detail="Document embedding failed.",
         ) from exc
 
     except VectorStoreError as exc:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=(status.HTTP_503_SERVICE_UNAVAILABLE),
             detail="Vector store is unavailable.",
         ) from exc
 

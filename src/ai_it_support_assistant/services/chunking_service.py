@@ -6,11 +6,7 @@ class ChunkingError(Exception):
 
 
 def chunk_text(
-    *,
-    document_id: str,
-    text: str,
-    chunk_size: int,
-    chunk_overlap: int,
+    *, document_id: str, text: str, chunk_size: int, chunk_overlap: int, allowed_roles: list[str]
 ) -> list[DocumentChunk]:
     if chunk_size <= 0:
         raise ChunkingError("chunk_size must be greater than zero.")
@@ -44,6 +40,7 @@ def chunk_text(
                     chunk_index=chunk_index,
                     text=chunk_content,
                     character_count=len(chunk_content),
+                    allowed_roles=allowed_roles,
                 )
             )
 

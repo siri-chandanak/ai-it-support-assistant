@@ -12,6 +12,7 @@ def test_short_text_creates_single_chunk() -> None:
         text="Restart the VPN client.",
         chunk_size=100,
         chunk_overlap=20,
+        allowed_roles=["reader"],
     )
 
     assert len(chunks) == 1
@@ -29,6 +30,7 @@ def test_long_text_creates_overlapping_chunks() -> None:
         text=text,
         chunk_size=10,
         chunk_overlap=2,
+        allowed_roles=["reader"],
     )
 
     assert len(chunks) == 3
@@ -48,6 +50,7 @@ def test_reject_overlap_equal_to_chunk_size() -> None:
             text="VPN troubleshooting guide",
             chunk_size=100,
             chunk_overlap=100,
+            allowed_roles=["reader"],
         )
 
 
@@ -61,4 +64,5 @@ def test_reject_negative_overlap() -> None:
             text="VPN troubleshooting guide",
             chunk_size=100,
             chunk_overlap=-1,
+            allowed_roles=["reader"],
         )

@@ -24,6 +24,7 @@ def test_embed_chunks_returns_vectors() -> None:
             chunk_index=0,
             text="Restart the VPN client.",
             character_count=23,
+            allowed_roles=["reader"],
         ),
         DocumentChunk(
             chunk_id="doc-1:1",
@@ -31,6 +32,7 @@ def test_embed_chunks_returns_vectors() -> None:
             chunk_index=1,
             text="Reset your MFA token.",
             character_count=21,
+            allowed_roles=["reader"],
         ),
     ]
 

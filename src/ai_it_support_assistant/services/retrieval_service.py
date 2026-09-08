@@ -1,7 +1,7 @@
 import logging
 import time
 
-from qdrant_client import QdrantClient
+from qdrant_client import QdrantClient, models
 from tenacity import (
     Retrying,
     stop_after_attempt,
@@ -41,6 +41,19 @@ def create_qdrant_retryer(
     )
 
 
+def build_authorization_filter(
+    user_roles: list[str],
+) -> models.Filter:
+    return models.Filter(
+        must=[
+            models.FieldCondition(
+                key="allowed_roles",
+                match=models.MatchAny(any=user_roles),
+            )
+        ]
+    )
+
+
 def query_qdrant_with_retry(
     *,
     client: QdrantClient,
@@ -48,11 +61,12 @@ def query_qdrant_with_retry(
     query_vector: list[float],
     top_k: int,
     max_attempts: int,
+    user_roles: list[str],
 ):
     retryer = create_qdrant_retryer(
         max_attempts=max_attempts,
     )
-
+    authorization_filter = build_authorization_filter(user_roles)
     for attempt in retryer:
         with attempt:
             attempt_number = attempt.retry_state.attempt_number
@@ -64,6 +78,7 @@ def query_qdrant_with_retry(
             return client.query_points(
                 collection_name=collection_name,
                 query=query_vector,
+                query_filter=authorization_filter,
                 limit=top_k,
                 with_payload=True,
             )
@@ -82,6 +97,7 @@ def retrieve_chunks(
     collection_name: str,
     qdrant_timeout_seconds: float,
     qdrant_max_retries: int,
+    user_roles: list[str],
 ) -> list[RetrievedChunk]:
     logger.info(
         ("retrieval_started request_id=%s question_length=%s top_k=%s"),
@@ -97,6 +113,7 @@ def retrieve_chunks(
         model_name=embedding_model_name,
         collection_name=collection_name,
         top_k=top_k,
+        user_roles=user_roles,
     )
 
     if retrieval_cache_enabled:
@@ -141,6 +158,7 @@ def retrieve_chunks(
             query_vector=query_vector,
             top_k=top_k,
             max_attempts=qdrant_max_retries,
+            user_roles=user_roles,
         )
         qdrant_duration_ms = (time.perf_counter() - qdrant_start) * 1000
 

@@ -97,11 +97,20 @@ def build_retrieval_cache_key(
     model_name: str,
     collection_name: str,
     top_k: int,
+    user_roles: list[str],
 ) -> str:
     normalized_query = normalize_query(query)
     query_hash = hash_text(normalized_query)
+    normalized_roles = ",".join(sorted(set(user_roles)))
 
-    return f"retrieval:{model_name}:{collection_name}:top_k={top_k}:{query_hash}"
+    return (
+        f"retrieval:"
+        f"{model_name}:"
+        f"{collection_name}:"
+        f"top_k={top_k}:"
+        f"roles={normalized_roles}:"
+        f"{query_hash}"
+    )
 
 
 def get_cached_retrieval(

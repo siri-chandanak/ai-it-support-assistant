@@ -75,6 +75,7 @@ def store_chunk_vectors(
                 "chunk_index": chunk.chunk_index,
                 "text": chunk.text,
                 "character_count": chunk.character_count,
+                "allowed_roles": chunk.allowed_roles,
             },
         )
         for chunk, embedding in zip(chunks, embeddings, strict=True)
