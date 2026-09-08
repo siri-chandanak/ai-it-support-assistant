@@ -17,6 +17,11 @@ from ai_it_support_assistant.services.agent_router_service import (
 from ai_it_support_assistant.services.agent_service import (
     handle_agent_request,
 )
+from ai_it_support_assistant.services.kubernetes_state_service import (
+    KubernetesAccessError,
+    KubernetesResourceNotFoundError,
+    KubernetesStateError,
+)
 from ai_it_support_assistant.services.live_status_service import (
     ServiceNotFoundError,
 )
@@ -55,6 +60,9 @@ def ask_agent(
             llm_model=settings.llm_model,
             openai_timeout_seconds=(settings.openai_timeout_seconds),
             openai_max_retries=(settings.openai_max_retries),
+            kubernetes_config_mode=(settings.kubernetes_config_mode),
+            kubernetes_context=(settings.kubernetes_context),
+            kubernetes_default_namespace=(settings.kubernetes_default_namespace),
             embedding_cache_enabled=(settings.embedding_cache_enabled),
             retrieval_cache_enabled=(settings.retrieval_cache_enabled),
         )
@@ -75,4 +83,22 @@ def ask_agent(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Unable to route request.",
+        ) from exc
+
+    except KubernetesResourceNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Kubernetes resource was not found.",
+        ) from exc
+
+    except KubernetesAccessError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Kubernetes state is unavailable.",
+        ) from exc
+
+    except KubernetesStateError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Kubernetes state is unavailable.",
         ) from exc

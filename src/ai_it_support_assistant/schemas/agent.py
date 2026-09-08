@@ -2,9 +2,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-AgentAction = Literal[
-    "rag",
-    "live_status",
+AgentAction = Literal["rag", "live_status", "kubernetes_state"]
+
+KubernetesResourceType = Literal[
+    "deployment",
+    "pod",
 ]
 
 
@@ -18,7 +20,13 @@ class AgentDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: AgentAction
+
     service_name: str | None
+
+    kubernetes_resource_type: KubernetesResourceType | None
+    kubernetes_resource_name: str | None
+    kubernetes_namespace: str | None
+
     reasoning_summary: str
 
 

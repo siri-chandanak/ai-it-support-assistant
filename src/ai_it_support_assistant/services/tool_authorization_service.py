@@ -10,6 +10,10 @@ TOOL_ALLOWED_ROLES: dict[str, set[str]] = {
         "it_support",
         "admin",
     },
+    "kubernetes_state": {
+        "it_support",
+        "admin",
+    },
 }
 
 

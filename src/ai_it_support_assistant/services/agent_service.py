@@ -11,6 +11,9 @@ from ai_it_support_assistant.services.agent_router_service import (
     AgentRoutingError,
     route_agent_request,
 )
+from ai_it_support_assistant.services.kubernetes_state_service import (
+    get_kubernetes_resource_state,
+)
 from ai_it_support_assistant.services.live_status_service import (
     get_live_service_status,
 )
@@ -39,6 +42,9 @@ def handle_agent_request(
     llm_model: str,
     openai_timeout_seconds: float,
     openai_max_retries: int,
+    kubernetes_config_mode: str,
+    kubernetes_context: str,
+    kubernetes_default_namespace: str,
     embedding_cache_enabled: bool,
     retrieval_cache_enabled: bool,
 ) -> AgentResponse:
@@ -110,5 +116,66 @@ def handle_agent_request(
             action="live_status",
             answer=answer,
         )
+    if decision.action == "kubernetes_state":
+        authorize_tool(
+            tool_name="kubernetes_state",
+            user=current_user,
+        )
 
+        if decision.kubernetes_resource_type is None or decision.kubernetes_resource_name is None:
+            raise AgentRoutingError("Missing Kubernetes arguments.")
+
+        namespace = decision.kubernetes_namespace or kubernetes_default_namespace
+
+        logger.info(
+            (
+                "tool_execution_started "
+                "request_id=%s "
+                "tool=kubernetes_state "
+                "resource_type=%s "
+                "namespace=%s"
+            ),
+            get_request_id(),
+            decision.kubernetes_resource_type,
+            namespace,
+        )
+
+        state = get_kubernetes_resource_state(
+            resource_type=decision.kubernetes_resource_type,
+            name=decision.kubernetes_resource_name,
+            namespace=namespace,
+            config_mode=kubernetes_config_mode,
+            context=kubernetes_context,
+        )
+
+        logger.info(
+            ("tool_execution_completed request_id=%s tool=kubernetes_state resource_type=%s"),
+            get_request_id(),
+            state.resource_type,
+        )
+
+        if state.resource_type == "deployment":
+            answer = (
+                f"Deployment {state.name} in namespace "
+                f"{state.namespace} has "
+                f"{state.ready_replicas}/"
+                f"{state.desired_replicas} ready replicas "
+                f"and {state.available_replicas} "
+                f"available replicas."
+            )
+
+        else:
+            answer = (
+                f"Pod {state.name} in namespace "
+                f"{state.namespace} is in phase "
+                f"{state.phase}. "
+                f"Ready={state.ready}. "
+                f"Restart count={state.restart_count}."
+            )
+
+        return AgentResponse(
+            question=question,
+            action="kubernetes_state",
+            answer=answer,
+        )
     raise AgentRoutingError("Unsupported agent action.")
