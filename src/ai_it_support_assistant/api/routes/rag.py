@@ -1,6 +1,16 @@
-from fastapi import APIRouter, HTTPException, status
+import logging
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from ai_it_support_assistant.api.dependencies.auth import (
+    get_current_user,
+)
 from ai_it_support_assistant.core.config import get_settings
+from ai_it_support_assistant.core.request_context import (
+    get_request_id,
+)
+from ai_it_support_assistant.schemas.auth import User
 from ai_it_support_assistant.schemas.rag import (
     RAGRequest,
     RAGResponse,
@@ -23,6 +33,7 @@ from ai_it_support_assistant.services.retrieval_service import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -31,13 +42,23 @@ router = APIRouter()
 )
 def rag_answer(
     request: RAGRequest,
+    current_user: Annotated[
+        User,
+        Depends(get_current_user),
+    ],
 ) -> RAGResponse:
     settings = get_settings()
-
+    logger.info(
+        ("rag_authorized request_id=%s user_id=%s role_count=%s"),
+        get_request_id(),
+        current_user.user_id,
+        len(current_user.roles),
+    )
     try:
         return answer_question(
             question=request.question,
             top_k=settings.rag_top_k,
+            user_roles=current_user.roles,
             score_threshold=settings.rag_score_threshold,
             embedding_model_name=settings.embedding_model_name,
             embedding_cache_enabled=settings.embedding_cache_enabled,

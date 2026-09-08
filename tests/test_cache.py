@@ -55,6 +55,7 @@ def test_retrieval_cache_key_includes_top_k() -> None:
         model_name="model-a",
         collection_name="documents",
         top_k=3,
+        user_roles=["reader"],
     )
 
     key_five = build_retrieval_cache_key(
@@ -62,6 +63,7 @@ def test_retrieval_cache_key_includes_top_k() -> None:
         model_name="model-a",
         collection_name="documents",
         top_k=5,
+        user_roles=["reader"],
     )
 
     assert key_three != key_five

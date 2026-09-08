@@ -44,6 +44,11 @@ async def test_ingestion_creates_chunks(tmp_path: Path) -> None:
                 qdrant_url="http://localhost:6333",
                 qdrant_collection_name="test_chunks",
                 qdrant_timeout_seconds=5.0,
+                allowed_roles=[
+                    "reader",
+                    "it_support",
+                    "admin",
+                ],
             )
 
     assert size_bytes == 2500

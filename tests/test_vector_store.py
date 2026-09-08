@@ -17,6 +17,7 @@ def test_store_chunk_vectors_upserts_points() -> None:
             chunk_index=0,
             text="Restart VPN.",
             character_count=12,
+            allowed_roles=["reader"],
         )
     ]
 
@@ -49,6 +50,7 @@ def test_store_chunk_vectors_rejects_mismatched_counts() -> None:
             chunk_index=0,
             text="Restart VPN.",
             character_count=12,
+            allowed_roles=["reader"],
         )
     ]
 

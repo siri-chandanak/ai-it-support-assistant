@@ -61,7 +61,7 @@ def test_openai_client_requires_api_key() -> None:
         get_openai_client("", 10.0, 3)
 
 
-def test_rag_endpoint_returns_answer() -> None:
+def test_rag_endpoint_returns_answer(reader_auth_override: None) -> None:
     fake_response = RAGResponse(
         question="How do I fix VPN?",
         answer="Restart the VPN client.",
@@ -135,7 +135,7 @@ def test_openai_client_uses_resilience_settings() -> None:
     )
 
 
-def test_rag_endpoint_returns_504_for_llm_timeout() -> None:
+def test_rag_endpoint_returns_504_for_llm_timeout(reader_auth_override: None) -> None:
     with patch(
         "ai_it_support_assistant.api.routes.rag.answer_question",
         side_effect=LLMTimeoutError("LLM timed out."),
@@ -150,7 +150,7 @@ def test_rag_endpoint_returns_504_for_llm_timeout() -> None:
     assert response.json() == {"detail": "Answer generation timed out."}
 
 
-def test_rag_endpoint_handles_llm_rate_limit() -> None:
+def test_rag_endpoint_handles_llm_rate_limit(reader_auth_override: None) -> None:
     with patch(
         "ai_it_support_assistant.api.routes.rag.answer_question",
         side_effect=LLMRateLimitError("Rate limited."),

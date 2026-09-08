@@ -18,6 +18,7 @@ class DocumentChunk(BaseModel):
     chunk_index: int
     text: str
     character_count: int
+    allowed_roles: list[str]
 
 
 class ExtractedDocument(BaseModel):

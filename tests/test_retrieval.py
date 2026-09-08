@@ -67,6 +67,7 @@ def test_retrieve_chunks_returns_ranked_results() -> None:
             collection_name="test_chunks",
             qdrant_timeout_seconds=5.0,
             qdrant_max_retries=3,
+            user_roles=["reader"],
         )
 
     assert len(results) == 2
@@ -114,6 +115,7 @@ def test_retrieve_chunks_rejects_invalid_payload() -> None:
                 collection_name="test",
                 qdrant_timeout_seconds=5.0,
                 qdrant_max_retries=3,
+                user_roles=["reader"],
             )
 
 
@@ -143,6 +145,7 @@ def test_qdrant_query_retries_then_succeeds() -> None:
             query_vector=[0.1, 0.2, 0.3],
             top_k=5,
             max_attempts=3,
+            user_roles=["reader"],
         )
 
     assert response is expected_response
@@ -171,6 +174,7 @@ def test_qdrant_query_fails_after_max_attempts() -> None:
                 query_vector=[0.1, 0.2],
                 top_k=3,
                 max_attempts=3,
+                user_roles=["reader"],
             )
 
     assert mock_client.query_points.call_count == 3
@@ -202,33 +206,7 @@ def test_retrieve_chunks_uses_retrieval_cache() -> None:
         model_name=model_name,
         collection_name=collection_name,
         top_k=top_k,
-    )
-
-    set_cached_retrieval(
-        key=cache_key,
-        chunks=cached_chunks,
-    )
-
-    query = "How do I restart VPN?"
-    model_name = "test-model"
-    collection_name = "document_chunks"
-    top_k = 5
-
-    cached_chunks = [
-        RetrievedChunk(
-            chunk_id="doc:0",
-            document_id="doc",
-            chunk_index=0,
-            text="VPN instructions",
-            score=0.9,
-        )
-    ]
-
-    cache_key = build_retrieval_cache_key(
-        query=query,
-        model_name=model_name,
-        collection_name=collection_name,
-        top_k=top_k,
+        user_roles=["reader"],
     )
 
     set_cached_retrieval(
@@ -252,6 +230,7 @@ def test_retrieve_chunks_uses_retrieval_cache() -> None:
             qdrant_url="http://localhost:6333",
             qdrant_timeout_seconds=5.0,
             qdrant_max_retries=1,
+            user_roles=["reader"],
         )
 
     assert results == cached_chunks
@@ -308,6 +287,7 @@ def test_retrieve_chunks_caches_qdrant_results() -> None:
             qdrant_url="http://localhost:6333",
             qdrant_timeout_seconds=5.0,
             qdrant_max_retries=1,
+            user_roles=["reader"],
         )
 
         second_results = retrieve_chunks(
@@ -320,6 +300,7 @@ def test_retrieve_chunks_caches_qdrant_results() -> None:
             qdrant_url="http://localhost:6333",
             qdrant_timeout_seconds=5.0,
             qdrant_max_retries=1,
+            user_roles=["reader"],
         )
 
     assert first_results == second_results
@@ -329,3 +310,48 @@ def test_retrieve_chunks_caches_qdrant_results() -> None:
     mock_get_qdrant_client.assert_called_once()
 
     mock_qdrant_client.query_points.assert_called_once()
+
+
+def test_authorization_filter_is_sent_to_qdrant() -> None:
+    mock_client = MagicMock()
+
+    # Qdrant returns no results.
+    mock_client.query_points.return_value.points = []
+
+    # Fake query embedding so the real embedding model
+    # does not run during this unit test.
+    fake_query_vector = [
+        0.1,
+        0.2,
+        0.3,
+    ]
+
+    with (
+        patch(
+            "ai_it_support_assistant.services.retrieval_service.get_qdrant_client",
+            return_value=mock_client,
+        ),
+        patch(
+            "ai_it_support_assistant.services.retrieval_service.embed_query",
+            return_value=fake_query_vector,
+        ),
+    ):
+        retrieve_chunks(
+            query="VPN",
+            top_k=3,
+            embedding_model_name="test-model",
+            embedding_cache_enabled=False,
+            retrieval_cache_enabled=False,
+            qdrant_url="http://localhost:6333",
+            collection_name="test_chunks",
+            qdrant_timeout_seconds=5.0,
+            qdrant_max_retries=1,
+            user_roles=["reader"],
+        )
+
+    mock_client.query_points.assert_called_once()
+
+    kwargs = mock_client.query_points.call_args.kwargs
+
+    assert "query_filter" in kwargs
+    assert kwargs["query_filter"] is not None
