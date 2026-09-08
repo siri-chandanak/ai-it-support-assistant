@@ -1,0 +1,4 @@
+ADMIN_SECURITY_CANARY_9472
+
+Emergency production access requires the
+security-admin recovery workflow.

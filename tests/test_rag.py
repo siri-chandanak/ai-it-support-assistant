@@ -88,6 +88,7 @@ def test_answer_question_generates_grounded_response() -> None:
             qdrant_max_attempts=3,
             openai_timeout_seconds=10.0,
             openai_max_retries=2,
+            user_roles=["reader"],
         )
 
     assert response.question == "How do I fix the VPN?"
@@ -120,6 +121,7 @@ def test_answer_question_abstains_when_no_chunks_found() -> None:
             qdrant_max_attempts=3,
             openai_timeout_seconds=10.0,
             openai_max_retries=2,
+            user_roles=["reader"],
         )
 
     assert response.sources == []
@@ -153,6 +155,7 @@ def test_llm_is_not_called_when_no_chunks_found() -> None:
             qdrant_max_attempts=3,
             openai_timeout_seconds=10.0,
             openai_max_retries=2,
+            user_roles=["reader"],
         )
 
     mock_generate.assert_not_called()
@@ -193,6 +196,7 @@ def test_answer_question_abstains_below_threshold() -> None:
             qdrant_max_attempts=3,
             openai_timeout_seconds=10.0,
             openai_max_retries=2,
+            user_roles=["reader"],
         )
 
     assert response.sources == []
