@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from uuid import UUID
 
 import pytest
@@ -7,6 +7,10 @@ from ai_it_support_assistant.schemas.agent import (
     AgentDecision,
 )
 from ai_it_support_assistant.schemas.auth import User
+from ai_it_support_assistant.schemas.kubernetes import (
+    DeploymentState,
+    PodState,
+)
 from ai_it_support_assistant.schemas.rag import RAGResponse
 from ai_it_support_assistant.schemas.tools import (
     ServiceStatus,
@@ -19,22 +23,37 @@ from ai_it_support_assistant.services.tool_authorization_service import (
 )
 
 
-def _agent_kwargs() -> dict:
+def _agent_kwargs() -> dict[str, object]:
     return {
-        "embedding_model_name": "test-embedding",
-        "qdrant_url": "http://localhost:6333",
-        "collection_name": "document_chunks",
+        "embedding_model_name": "test-embedding-model",
+        "qdrant_url": "http://test-qdrant",
+        "collection_name": "test-collection",
         "qdrant_timeout_seconds": 5.0,
         "qdrant_max_attempts": 1,
         "rag_top_k": 3,
         "rag_score_threshold": 0.5,
-        "openai_api_key": "test",
+        "openai_api_key": "test-key",
         "llm_model": "test-model",
-        "openai_timeout_seconds": 10.0,
-        "openai_max_retries": 0,
+        "openai_timeout_seconds": 5.0,
+        "openai_max_retries": 1,
         "embedding_cache_enabled": False,
         "retrieval_cache_enabled": False,
+        "kubernetes_config_mode": "local",
+        "kubernetes_context": "kind-kin",
+        "kubernetes_default_namespace": "ai-it-support-test",
     }
+
+
+def call_agent(
+    *,
+    current_user: User,
+    question: str,
+):
+    return handle_agent_request(
+        question=question,
+        current_user=current_user,
+        **_agent_kwargs(),
+    )
 
 
 def test_agent_executes_only_rag_path() -> None:
@@ -47,6 +66,9 @@ def test_agent_executes_only_rag_path() -> None:
     decision = AgentDecision(
         action="rag",
         service_name=None,
+        kubernetes_resource_type=None,
+        kubernetes_resource_name=None,
+        kubernetes_namespace=None,
         reasoning_summary="Documentation question.",
     )
 
@@ -94,6 +116,9 @@ def test_agent_executes_only_live_status_path() -> None:
     decision = AgentDecision(
         action="live_status",
         service_name="vpn-gateway",
+        kubernetes_resource_type=None,
+        kubernetes_resource_name=None,
+        kubernetes_namespace=None,
         reasoning_summary="Live status question.",
     )
 
@@ -137,6 +162,9 @@ def test_authorization_happens_before_live_tool_execution() -> None:
     decision = AgentDecision(
         action="live_status",
         service_name="vpn-gateway",
+        kubernetes_resource_type=None,
+        kubernetes_resource_name=None,
+        kubernetes_namespace=None,
         reasoning_summary="Live status question.",
     )
 
@@ -157,3 +185,176 @@ def test_authorization_happens_before_live_tool_execution() -> None:
             )
 
     mock_live.assert_not_called()
+
+
+@patch("ai_it_support_assistant.services.agent_service.get_kubernetes_resource_state")
+@patch("ai_it_support_assistant.services.agent_service.route_agent_request")
+def test_reader_is_denied_before_kubernetes_call(
+    mock_route_agent_request: Mock,
+    mock_kubernetes_tool: Mock,
+) -> None:
+    mock_route_agent_request.return_value = AgentDecision(
+        action="kubernetes_state",
+        service_name=None,
+        kubernetes_resource_type="deployment",
+        kubernetes_resource_name="demo-api",
+        kubernetes_namespace="ai-it-support-test",
+        reasoning_summary=("The user asks for current Deployment state."),
+    )
+
+    reader = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000004"),
+        username="reader",
+        roles=["reader"],
+    )
+
+    with pytest.raises(ToolAuthorizationError):
+        call_agent(
+            current_user=reader,
+            question=("How many replicas does demo-api have in ai-it-support-test?"),
+        )
+
+    mock_kubernetes_tool.assert_not_called()
+
+
+@patch("ai_it_support_assistant.services.agent_service.get_kubernetes_resource_state")
+@patch("ai_it_support_assistant.services.agent_service.route_agent_request")
+def test_it_support_can_read_deployment_state(
+    mock_route_agent_request: Mock,
+    mock_kubernetes_tool: Mock,
+) -> None:
+    mock_route_agent_request.return_value = AgentDecision(
+        action="kubernetes_state",
+        service_name=None,
+        kubernetes_resource_type="deployment",
+        kubernetes_resource_name="demo-api",
+        kubernetes_namespace="ai-it-support-test",
+        reasoning_summary=("The user asks for current Deployment state."),
+    )
+
+    mock_kubernetes_tool.return_value = DeploymentState(
+        name="demo-api",
+        namespace="ai-it-support-test",
+        desired_replicas=2,
+        ready_replicas=2,
+        available_replicas=2,
+        updated_replicas=2,
+    )
+
+    support_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000005"),
+        username="support",
+        roles=["it_support"],
+    )
+
+    response = call_agent(
+        current_user=support_user,
+        question=("How many ready replicas does demo-api have in ai-it-support-test?"),
+    )
+
+    assert response.action == "kubernetes_state"
+    assert "demo-api" in response.answer
+    assert "2/2" in response.answer
+
+    mock_kubernetes_tool.assert_called_once_with(
+        resource_type="deployment",
+        name="demo-api",
+        namespace="ai-it-support-test",
+        config_mode="local",
+        context="kind-kin",
+    )
+
+
+@patch("ai_it_support_assistant.services.agent_service.get_kubernetes_resource_state")
+@patch("ai_it_support_assistant.services.agent_service.route_agent_request")
+def test_it_support_can_read_pod_state(
+    mock_route_agent_request: Mock,
+    mock_kubernetes_tool: Mock,
+) -> None:
+    mock_route_agent_request.return_value = AgentDecision(
+        action="kubernetes_state",
+        service_name=None,
+        kubernetes_resource_type="pod",
+        kubernetes_resource_name="demo-worker",
+        kubernetes_namespace="ai-it-support-test",
+        reasoning_summary=("The user asks for current Pod state."),
+    )
+
+    mock_kubernetes_tool.return_value = PodState(
+        name="demo-worker",
+        namespace="ai-it-support-test",
+        phase="Running",
+        ready=True,
+        restart_count=0,
+    )
+
+    support_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000006"),
+        username="support",
+        roles=["it_support"],
+    )
+
+    response = call_agent(
+        current_user=support_user,
+        question=("Is pod demo-worker running in ai-it-support-test?"),
+    )
+
+    assert response.action == "kubernetes_state"
+    assert "demo-worker" in response.answer
+    assert "Running" in response.answer
+    assert "Ready=True" in response.answer
+    assert "Restart count=0" in response.answer
+
+    mock_kubernetes_tool.assert_called_once_with(
+        resource_type="pod",
+        name="demo-worker",
+        namespace="ai-it-support-test",
+        config_mode="local",
+        context="kind-kin",
+    )
+
+
+@patch("ai_it_support_assistant.services.agent_service.get_kubernetes_resource_state")
+@patch("ai_it_support_assistant.services.agent_service.route_agent_request")
+def test_kubernetes_uses_default_namespace_when_missing(
+    mock_route_agent_request: Mock,
+    mock_kubernetes_tool: Mock,
+) -> None:
+    mock_route_agent_request.return_value = AgentDecision(
+        action="kubernetes_state",
+        service_name=None,
+        kubernetes_resource_type="deployment",
+        kubernetes_resource_name="demo-api",
+        kubernetes_namespace=None,
+        reasoning_summary=("The user asks for current Deployment state."),
+    )
+
+    mock_kubernetes_tool.return_value = DeploymentState(
+        name="demo-api",
+        namespace="ai-it-support-test",
+        desired_replicas=2,
+        ready_replicas=2,
+        available_replicas=2,
+        updated_replicas=2,
+    )
+
+    support_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000007"),
+        username="support",
+        roles=["it_support"],
+    )
+
+    response = call_agent(
+        current_user=support_user,
+        question="How many replicas does demo-api have?",
+    )
+
+    assert response.action == "kubernetes_state"
+
+    mock_kubernetes_tool.assert_called_once_with(
+        resource_type="deployment",
+        name="demo-api",
+        namespace="ai-it-support-test",
+        config_mode="local",
+        context="kind-kin",
+    )

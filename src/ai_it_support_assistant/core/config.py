@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
 
+    kubernetes_config_mode: str = "local"
+    kubernetes_context: str = ""
+    kubernetes_default_namespace: str = "ai-it-support-test"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

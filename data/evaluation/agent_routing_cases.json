@@ -1,0 +1,139 @@
+[
+  {
+    "case_id": "rag_001",
+    "question": "How do I troubleshoot a pod that keeps restarting?",
+    "expected_action": "rag",
+    "expected_service_name": null,
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "rag_002",
+    "question": "What is the documented procedure for VPN authentication failures?",
+    "expected_action": "rag",
+    "expected_service_name": null,
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "rag_003",
+    "question": "How do I check whether a Deployment has enough ready replicas?",
+    "expected_action": "rag",
+    "expected_service_name": null,
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "rag_004",
+    "question": "What does degraded service health mean?",
+    "expected_action": "rag",
+    "expected_service_name": null,
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "rag_005",
+    "question": "What steps should support follow when a Kubernetes pod is CrashLoopBackOff?",
+    "expected_action": "rag",
+    "expected_service_name": null,
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
+  },
+
+  {
+    "case_id": "live_001",
+    "question": "Is vpn-gateway healthy right now?",
+    "expected_action": "live_status",
+    "expected_service_name": "vpn-gateway",
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "live_002",
+    "question": "What is the current health of payment-api?",
+    "expected_action": "live_status",
+    "expected_service_name": "payment-api",
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "live_003",
+    "question": "Is auth-service available right now?",
+    "expected_action": "live_status",
+    "expected_service_name": "auth-service",
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "live_004",
+    "question": "Is billing-service degraded right now?",
+    "expected_action": "live_status",
+    "expected_service_name": "billing-service",
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "live_005",
+    "question": "Check the live status of inventory-api.",
+    "expected_action": "live_status",
+    "expected_service_name": "inventory-api",
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
+  },
+
+  {
+    "case_id": "k8s_001",
+    "question": "How many ready replicas does demo-api have right now?",
+    "expected_action": "kubernetes_state",
+    "expected_service_name": null,
+    "expected_kubernetes_resource_type": "deployment",
+    "expected_kubernetes_resource_name": "demo-api",
+    "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "k8s_002",
+    "question": "How many replicas does deployment demo-api have in ai-it-support-test?",
+    "expected_action": "kubernetes_state",
+    "expected_service_name": null,
+    "expected_kubernetes_resource_type": "deployment",
+    "expected_kubernetes_resource_name": "demo-api",
+    "expected_kubernetes_namespace": "ai-it-support-test"
+  },
+  {
+    "case_id": "k8s_003",
+    "question": "Is pod demo-worker running right now?",
+    "expected_action": "kubernetes_state",
+    "expected_service_name": null,
+    "expected_kubernetes_resource_type": "pod",
+    "expected_kubernetes_resource_name": "demo-worker",
+    "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "k8s_004",
+    "question": "What is the restart count for pod demo-worker in ai-it-support-test?",
+    "expected_action": "kubernetes_state",
+    "expected_service_name": null,
+    "expected_kubernetes_resource_type": "pod",
+    "expected_kubernetes_resource_name": "demo-worker",
+    "expected_kubernetes_namespace": "ai-it-support-test"
+  },
+  {
+    "case_id": "k8s_005",
+    "question": "What is the current Deployment state of demo-api?",
+    "expected_action": "kubernetes_state",
+    "expected_service_name": null,
+    "expected_kubernetes_resource_type": "deployment",
+    "expected_kubernetes_resource_name": "demo-api",
+    "expected_kubernetes_namespace": null
+  }
+]
