@@ -21,6 +21,9 @@ def test_router_selects_rag() -> None:
             '"kubernetes_resource_type":null,'
             '"kubernetes_resource_name":null,'
             '"kubernetes_namespace":null,'
+            '"incident_title":null,'
+            '"incident_description":null,'
+            '"incident_severity":null,'
             '"reasoning_summary":"The question asks about a runbook."}'
         )
     )
@@ -54,6 +57,9 @@ def test_router_selects_live_status() -> None:
             '"kubernetes_resource_type":null,'
             '"kubernetes_resource_name":null,'
             '"kubernetes_namespace":null,'
+            '"incident_title":null,'
+            '"incident_description":null,'
+            '"incident_severity":null,'
             '"reasoning_summary":"The user asks for live health."}'
         )
     )
@@ -84,6 +90,12 @@ def test_router_rejects_live_status_without_service_name() -> None:
         output_text=(
             '{"action":"live_status",'
             '"service_name":null,'
+            '"kubernetes_resource_type":null,'
+            '"kubernetes_resource_name":null,'
+            '"kubernetes_namespace":null,'
+            '"incident_title":null,'
+            '"incident_description":null,'
+            '"incident_severity":null,'
             '"reasoning_summary":"Live health question."}'
         )
     )
@@ -265,6 +277,9 @@ def test_router_selects_kubernetes_state() -> None:
             '"kubernetes_resource_type":"deployment",'
             '"kubernetes_resource_name":"demo-api",'
             '"kubernetes_namespace":"ai-it-support-test",'
+            '"incident_title":null,'
+            '"incident_description":null,'
+            '"incident_severity":null,'
             '"reasoning_summary":'
             '"The user asks for the current Deployment state."}'
         )
@@ -301,6 +316,9 @@ def test_router_rejects_kubernetes_state_without_resource_name() -> None:
             '"kubernetes_resource_type":"deployment",'
             '"kubernetes_resource_name":null,'
             '"kubernetes_namespace":"ai-it-support-test",'
+            '"incident_title":null,'
+            '"incident_description":null,'
+            '"incident_severity":null,'
             '"reasoning_summary":'
             '"The user asks for current Deployment state."}'
         )

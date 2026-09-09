@@ -14,6 +14,10 @@ TOOL_ALLOWED_ROLES: dict[str, set[str]] = {
         "it_support",
         "admin",
     },
+    "create_incident": {
+        "it_support",
+        "admin",
+    },
 }
 
 

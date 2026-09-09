@@ -32,6 +32,27 @@ def _arguments_match(
             and decision.kubernetes_namespace == case.expected_kubernetes_namespace
         )
 
+    if case.expected_action == "create_incident":
+        arguments_correct = True
+
+        if case.expected_service_name is not None:
+            arguments_correct = (
+                arguments_correct and decision.service_name == case.expected_service_name
+            )
+
+        arguments_correct = (
+            arguments_correct
+            and bool(decision.incident_title)
+            and bool(decision.incident_description)
+            and decision.incident_severity
+            in {
+                "low",
+                "medium",
+                "high",
+                "critical",
+            }
+        )
+        return arguments_correct
     return False
 
 

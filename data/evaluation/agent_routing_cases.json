@@ -135,5 +135,50 @@
     "expected_kubernetes_resource_type": "deployment",
     "expected_kubernetes_resource_name": "demo-api",
     "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "incident-001",
+    "question": "Create an incident for the degraded vpn-gateway.",
+    "expected_action": "create_incident",
+    "expected_service_name": null,
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "status-003",
+    "question": "Is vpn-gateway degraded right now?",
+    "expected_action": "live_status",
+    "expected_service_name": "vpn-gateway",
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "incident-002",
+    "question": "Open a ticket for the payment-api outage.",
+    "expected_action": "create_incident",
+    "expected_service_name": null,
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "rag-incident-contrast-001",
+    "question": "What should I do if vpn-gateway is degraded?",
+    "expected_action": "rag",
+    "expected_service_name": null,
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
+  },
+  {
+    "case_id": "incident-003",
+    "question": "File an incident because vpn-gateway authentication is failing.",
+    "expected_action": "create_incident",
+    "expected_service_name": null,
+    "expected_kubernetes_resource_type": null,
+    "expected_kubernetes_resource_name": null,
+    "expected_kubernetes_namespace": null
   }
 ]

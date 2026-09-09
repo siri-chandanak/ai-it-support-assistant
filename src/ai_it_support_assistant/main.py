@@ -4,6 +4,7 @@ from ai_it_support_assistant.api.middleware.request_context import (
     RequestContextMiddleware,
 )
 from ai_it_support_assistant.api.routes.agent import router as agent_router
+from ai_it_support_assistant.api.routes.approval import router as approval_router
 from ai_it_support_assistant.api.routes.auth import router as auth_router
 from ai_it_support_assistant.api.routes.documents import router as documents_router
 from ai_it_support_assistant.api.routes.health import router as health_router
@@ -57,6 +58,9 @@ def create_app() -> FastAPI:
 
     # Include the agent router
     app.include_router(agent_router, prefix="/api/v1", tags=["agent"])
+
+    # Include the approval route
+    app.include_router(approval_router, prefix="/api/v1", tags=["approvals"])
 
     return app
 

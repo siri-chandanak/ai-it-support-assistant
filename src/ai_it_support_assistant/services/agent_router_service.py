@@ -1,4 +1,7 @@
-from ai_it_support_assistant.schemas.agent import AgentDecision
+from ai_it_support_assistant.schemas.agent import (
+    AgentDecision,
+    AgentRoutingOutput,
+)
 from ai_it_support_assistant.services.llm_service import get_openai_client
 
 
@@ -7,7 +10,7 @@ class AgentRoutingError(Exception):
 
 
 def validate_agent_decision(
-    decision: AgentDecision,
+    decision: AgentRoutingOutput,
 ) -> None:
     if decision.action == "rag":
         if any(
@@ -17,11 +20,14 @@ def validate_agent_decision(
                 decision.kubernetes_resource_type,
                 decision.kubernetes_resource_name,
                 decision.kubernetes_namespace,
+                decision.incident_title,
+                decision.incident_description,
+                decision.incident_severity,
             ]
         ):
             raise AgentRoutingError("rag must not contain tool arguments.")
 
-    if decision.action == "live_status":
+    elif decision.action == "live_status":
         if not decision.service_name:
             raise AgentRoutingError("live_status requires a service name.")
 
@@ -35,7 +41,17 @@ def validate_agent_decision(
         ):
             raise AgentRoutingError("live_status cannot contain Kubernetes arguments.")
 
-    if decision.action == "kubernetes_state":
+        if any(
+            value is not None
+            for value in [
+                decision.incident_title,
+                decision.incident_description,
+                decision.incident_severity,
+            ]
+        ):
+            raise AgentRoutingError("live_status cannot contain incident arguments.")
+
+    elif decision.action == "kubernetes_state":
         if not decision.kubernetes_resource_type:
             raise AgentRoutingError("kubernetes_state requires resource type.")
 
@@ -44,6 +60,53 @@ def validate_agent_decision(
 
         if decision.service_name is not None:
             raise AgentRoutingError("kubernetes_state cannot contain service_name.")
+
+        if any(
+            value is not None
+            for value in [
+                decision.incident_title,
+                decision.incident_description,
+                decision.incident_severity,
+            ]
+        ):
+            raise AgentRoutingError("kubernetes_state cannot contain incident arguments.")
+
+    elif decision.action == "create_incident":
+        if not decision.incident_title:
+            raise AgentRoutingError("create_incident requires a title.")
+
+        if not decision.incident_description:
+            raise AgentRoutingError("create_incident requires a description.")
+
+        if not decision.incident_severity:
+            raise AgentRoutingError("create_incident requires severity.")
+
+        if decision.incident_severity not in {
+            "low",
+            "medium",
+            "high",
+            "critical",
+        }:
+            raise AgentRoutingError("Invalid incident severity.")
+
+        if (
+            decision.kubernetes_resource_type is not None
+            or decision.kubernetes_resource_name is not None
+            or decision.kubernetes_namespace is not None
+        ):
+            raise AgentRoutingError("create_incident cannot contain Kubernetes arguments.")
+
+        if any(
+            value is not None
+            for value in [
+                decision.kubernetes_resource_type,
+                decision.kubernetes_resource_name,
+                decision.kubernetes_namespace,
+            ]
+        ):
+            raise AgentRoutingError("create_incident cannot contain Kubernetes arguments.")
+    else:
+        raise AgentRoutingError(f"Unsupported agent action: {decision.action}")
 
 
 def route_agent_request(
@@ -68,7 +131,11 @@ You are a routing component for an IT support assistant.
 
 Choose exactly one action.
 
-Available actions:
+Always return every field in the response schema.
+If a field does not apply to the selected action, return null.
+Never omit fields.
+
+Available actions:  
 
 1. rag
 
@@ -91,7 +158,9 @@ For rag:
 - kubernetes_resource_type must be null
 - kubernetes_resource_name must be null
 - kubernetes_namespace must be null
-
+- incident_title must be null
+- incident_description must be null
+- incident_severity must be null
 
 2. live_status
 
@@ -108,7 +177,9 @@ For live_status:
 - kubernetes_resource_type must be null
 - kubernetes_resource_name must be null
 - kubernetes_namespace must be null
-
+- incident_title must be null
+- incident_description must be null
+- incident_severity must be null
 
 3. kubernetes_state
 
@@ -131,6 +202,9 @@ For kubernetes_state:
 - extract kubernetes_resource_name
 - extract kubernetes_namespace only if the user explicitly provides it
 - service_name must be null
+- incident_title must be null
+- incident_description must be null
+- incident_severity must be null
 
 Important routing distinction:
 
@@ -183,6 +257,46 @@ Rules:
 - If the question is ambiguous and does not clearly require live data,
   prefer rag.
 - Keep reasoning_summary short.
+
+4. create_incident
+
+Use this only when the user explicitly asks to create, open, or file
+an incident or ticket.
+
+Examples:
+- Create an incident for vpn-gateway.
+- Open a ticket for payment-api being unavailable.
+- File an incident because authentication-service is failing.
+
+For create_incident:
+- extract or draft a concise incident title
+- draft a factual incident description
+- choose severity only from:
+  low, medium, high, critical
+- include service_name when clearly identified
+- kubernetes_resource_type must be null
+- kubernetes_resource_name must be null
+- kubernetes_namespace must be null
+
+Do not claim the incident has been created.
+The application requires explicit approval before execution.
+
+Rules:
+- Do not execute anything.
+- Do not invent service names.
+- Do not invent Kubernetes resource names.
+- Do not invent Kubernetes namespaces.
+- Never choose Kubernetes credentials, kubeconfig, cluster context,
+  API server, ServiceAccount, or authentication information.
+- Only choose create_incident when the user explicitly asks to
+  create, open, or file an incident or ticket.
+- If the question only asks how to troubleshoot something, use rag.
+- If the question only asks for current service health, use live_status.
+- If the question asks for current Kubernetes resource state,
+  use kubernetes_state.
+- If the question is ambiguous and does not clearly require live data
+  or a write action, prefer rag.
+- Keep reasoning_summary short.
 """.strip()
 
     try:
@@ -195,7 +309,7 @@ Rules:
                     "type": "json_schema",
                     "name": "agent_decision",
                     "strict": True,
-                    "schema": AgentDecision.model_json_schema(),
+                    "schema": AgentRoutingOutput.model_json_schema(),
                 }
             },
         )
@@ -203,10 +317,12 @@ Rules:
         raise AgentRoutingError("Agent routing failed.") from exc
 
     try:
-        decision = AgentDecision.model_validate_json(response.output_text)
+        routing_output = AgentRoutingOutput.model_validate_json(response.output_text)
     except Exception as exc:
         raise AgentRoutingError("Agent returned invalid routing output.") from exc
 
-    validate_agent_decision(decision)
+    validate_agent_decision(routing_output)
+
+    decision = AgentDecision.model_validate(routing_output.model_dump())
 
     return decision
