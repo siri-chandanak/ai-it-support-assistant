@@ -8,6 +8,7 @@ from ai_it_support_assistant.api.routes.approval import router as approval_route
 from ai_it_support_assistant.api.routes.auth import router as auth_router
 from ai_it_support_assistant.api.routes.documents import router as documents_router
 from ai_it_support_assistant.api.routes.health import router as health_router
+from ai_it_support_assistant.api.routes.incidents import router as incidents_router
 from ai_it_support_assistant.api.routes.rag import router as rag_router
 from ai_it_support_assistant.api.routes.retrieval import router as retrieval_router
 from ai_it_support_assistant.cache.cache_service import (
@@ -61,6 +62,9 @@ def create_app() -> FastAPI:
 
     # Include the approval route
     app.include_router(approval_router, prefix="/api/v1", tags=["approvals"])
+
+    # Include the incident route
+    app.include_router(incidents_router, prefix="/api/v1", tags=["incidents"])
 
     return app
 

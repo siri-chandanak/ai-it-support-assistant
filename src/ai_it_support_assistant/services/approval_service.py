@@ -4,8 +4,9 @@ from sqlalchemy.orm import Session
 
 from ai_it_support_assistant.repositories.approval_repository import (
     get_pending_action,
+    mark_pending_action_approved,
+    mark_pending_action_executed,
     save_pending_action,
-    update_pending_action,
 )
 from ai_it_support_assistant.schemas.approval import (
     PendingIncidentAction,
@@ -71,24 +72,23 @@ def approve_pending_action(
     if action.executed:
         raise ApprovalAlreadyExecutedError("Action was already executed.")
 
-    updated = action.model_copy(
+    mark_pending_action_approved(
+        session=session,
+        approval_id=approval_id,
+    )
+
+    return action.model_copy(
         update={
             "approved": True,
         }
     )
-
-    update_pending_action(
-        session=session,
-        action=updated,
-    )
-
-    return updated
 
 
 def mark_action_executed(
     *,
     session: Session,
     action: PendingIncidentAction,
+    incident_id: str,
 ) -> PendingIncidentAction:
     if not action.approved:
         raise ApprovalError("Action has not been approved.")
@@ -96,15 +96,15 @@ def mark_action_executed(
     if action.executed:
         raise ApprovalAlreadyExecutedError("Action was already executed.")
 
-    updated = action.model_copy(
+    mark_pending_action_executed(
+        session=session,
+        approval_id=action.approval_id,
+        incident_id=incident_id,
+    )
+
+    return action.model_copy(
         update={
             "executed": True,
+            "incident_id": incident_id,
         }
     )
-
-    update_pending_action(
-        session=session,
-        action=updated,
-    )
-
-    return updated

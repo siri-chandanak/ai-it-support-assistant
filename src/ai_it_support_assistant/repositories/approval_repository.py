@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from sqlalchemy.orm import Session
 
 from ai_it_support_assistant.models.incident import (
@@ -55,23 +57,65 @@ def get_pending_action(
         ),
         approved=model.approved,
         executed=model.executed,
+        incident_id=model.incident_id,
     )
 
 
-def update_pending_action(
+def mark_pending_action_approved(
     *,
     session: Session,
-    action: PendingIncidentAction,
-) -> None:
+    approval_id: str,
+) -> bool:
     model = session.get(
         PendingIncidentActionModel,
-        action.approval_id,
+        approval_id,
     )
 
     if model is None:
-        return
+        return False
 
-    model.approved = action.approved
-    model.executed = action.executed
+    model.approved = True
+    model.approved_at = datetime.now(UTC)
 
     session.flush()
+
+    return True
+
+
+def mark_pending_action_executed(
+    *,
+    session: Session,
+    approval_id: str,
+    incident_id: str,
+) -> bool:
+    model = session.get(
+        PendingIncidentActionModel,
+        approval_id,
+    )
+
+    if model is None:
+        return False
+
+    model.executed = True
+    model.incident_id = incident_id
+    model.executed_at = datetime.now(UTC)
+
+    session.flush()
+
+    return True
+
+
+def get_incident_id_for_pending_action(
+    *,
+    session: Session,
+    approval_id: str,
+) -> str | None:
+    model = session.get(
+        PendingIncidentActionModel,
+        approval_id,
+    )
+
+    if model is None:
+        return None
+
+    return model.incident_id

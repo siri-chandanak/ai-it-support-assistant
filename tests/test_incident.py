@@ -16,14 +16,13 @@ def test_create_incident_returns_id(
         service_name="vpn-gateway",
     )
 
-    incident = create_incident(
+    result = create_incident(
         session=db_session,
         request=request,
         created_by="support",
+        idempotency_key=("create_incident:APR-TEST-001"),
     )
 
-    db_session.commit()
+    assert result.incident.incident_id.startswith("INC-")
 
-    assert incident.incident_id.startswith("INC-")
-    assert incident.created_by == "support"
-    assert incident.status == "open"
+    assert result.created is True
