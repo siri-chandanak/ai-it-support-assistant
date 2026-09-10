@@ -2,7 +2,13 @@ from unittest.mock import Mock, patch
 from uuid import UUID
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from ai_it_support_assistant.models.incident import (
+    IncidentModel,
+    PendingIncidentActionModel,
+)
 from ai_it_support_assistant.schemas.agent import (
     AgentDecision,
 )
@@ -48,15 +54,17 @@ def call_agent(
     *,
     current_user: User,
     question: str,
+    session: Session,
 ):
     return handle_agent_request(
         question=question,
         current_user=current_user,
+        session=session,
         **_agent_kwargs(),
     )
 
 
-def test_agent_executes_only_rag_path() -> None:
+def test_agent_executes_only_rag_path(db_session: Session) -> None:
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
         username="reader",
@@ -96,6 +104,7 @@ def test_agent_executes_only_rag_path() -> None:
         result = handle_agent_request(
             question="How do I troubleshoot VPN?",
             current_user=user,
+            session=db_session,
             **_agent_kwargs(),
         )
 
@@ -106,7 +115,7 @@ def test_agent_executes_only_rag_path() -> None:
     mock_live.assert_not_called()
 
 
-def test_agent_executes_only_live_status_path() -> None:
+def test_agent_executes_only_live_status_path(db_session: Session) -> None:
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000002"),
         username="support",
@@ -142,6 +151,7 @@ def test_agent_executes_only_live_status_path() -> None:
         result = handle_agent_request(
             question="Is vpn-gateway healthy right now?",
             current_user=user,
+            session=db_session,
             **_agent_kwargs(),
         )
 
@@ -152,7 +162,7 @@ def test_agent_executes_only_live_status_path() -> None:
     mock_rag.assert_not_called()
 
 
-def test_authorization_happens_before_live_tool_execution() -> None:
+def test_authorization_happens_before_live_tool_execution(db_session: Session) -> None:
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000003"),
         username="reader",
@@ -181,6 +191,7 @@ def test_authorization_happens_before_live_tool_execution() -> None:
             handle_agent_request(
                 question="Is vpn-gateway healthy right now?",
                 current_user=user,
+                session=db_session,
                 **_agent_kwargs(),
             )
 
@@ -192,6 +203,7 @@ def test_authorization_happens_before_live_tool_execution() -> None:
 def test_reader_is_denied_before_kubernetes_call(
     mock_route_agent_request: Mock,
     mock_kubernetes_tool: Mock,
+    db_session: Session,
 ) -> None:
     mock_route_agent_request.return_value = AgentDecision(
         action="kubernetes_state",
@@ -212,6 +224,7 @@ def test_reader_is_denied_before_kubernetes_call(
         call_agent(
             current_user=reader,
             question=("How many replicas does demo-api have in ai-it-support-test?"),
+            session=db_session,
         )
 
     mock_kubernetes_tool.assert_not_called()
@@ -222,6 +235,7 @@ def test_reader_is_denied_before_kubernetes_call(
 def test_it_support_can_read_deployment_state(
     mock_route_agent_request: Mock,
     mock_kubernetes_tool: Mock,
+    db_session: Session,
 ) -> None:
     mock_route_agent_request.return_value = AgentDecision(
         action="kubernetes_state",
@@ -250,6 +264,7 @@ def test_it_support_can_read_deployment_state(
     response = call_agent(
         current_user=support_user,
         question=("How many ready replicas does demo-api have in ai-it-support-test?"),
+        session=db_session,
     )
 
     assert response.action == "kubernetes_state"
@@ -270,6 +285,7 @@ def test_it_support_can_read_deployment_state(
 def test_it_support_can_read_pod_state(
     mock_route_agent_request: Mock,
     mock_kubernetes_tool: Mock,
+    db_session: Session,
 ) -> None:
     mock_route_agent_request.return_value = AgentDecision(
         action="kubernetes_state",
@@ -297,6 +313,7 @@ def test_it_support_can_read_pod_state(
     response = call_agent(
         current_user=support_user,
         question=("Is pod demo-worker running in ai-it-support-test?"),
+        session=db_session,
     )
 
     assert response.action == "kubernetes_state"
@@ -319,6 +336,7 @@ def test_it_support_can_read_pod_state(
 def test_kubernetes_uses_default_namespace_when_missing(
     mock_route_agent_request: Mock,
     mock_kubernetes_tool: Mock,
+    db_session: Session,
 ) -> None:
     mock_route_agent_request.return_value = AgentDecision(
         action="kubernetes_state",
@@ -347,6 +365,7 @@ def test_kubernetes_uses_default_namespace_when_missing(
     response = call_agent(
         current_user=support_user,
         question="How many replicas does demo-api have?",
+        session=db_session,
     )
 
     assert response.action == "kubernetes_state"
@@ -358,3 +377,167 @@ def test_kubernetes_uses_default_namespace_when_missing(
         config_mode="local",
         context="kind-kin",
     )
+
+
+@patch("ai_it_support_assistant.services.agent_service.get_live_service_status")
+@patch("ai_it_support_assistant.services.agent_service.route_agent_request")
+def test_it_support_can_propose_incident_without_executing_write(
+    mock_route_agent_request: Mock,
+    mock_live_status: Mock,
+    db_session: Session,
+) -> None:
+    mock_route_agent_request.return_value = AgentDecision(
+        action="create_incident",
+        service_name="vpn-gateway",
+        kubernetes_resource_type=None,
+        kubernetes_resource_name=None,
+        kubernetes_namespace=None,
+        incident_title="VPN gateway degradation",
+        incident_description=("Users are reporting authentication failures."),
+        incident_severity="high",
+        reasoning_summary=("The user explicitly requested incident creation."),
+    )
+
+    mock_live_status.return_value = ServiceStatus(
+        service_name="vpn-gateway",
+        status="degraded",
+        message="Authentication latency is elevated.",
+    )
+
+    support_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000008"),
+        username="support",
+        roles=["it_support"],
+    )
+
+    incidents_before = db_session.scalars(select(IncidentModel)).all()
+
+    incident_count_before = len(incidents_before)
+
+    response = call_agent(
+        current_user=support_user,
+        question=("Create an incident for the degraded vpn-gateway."),
+        session=db_session,
+    )
+
+    assert response.action == "create_incident"
+    assert response.approval_required is True
+
+    assert response.approval_id is not None
+    assert response.approval_id.startswith("APR-")
+
+    assert response.incident_id is None
+
+    assert response.proposed_incident is not None
+
+    assert response.proposed_incident.service_name == "vpn-gateway"
+
+    assert response.proposed_incident.severity == "high"
+
+    assert "Current service status: degraded" in response.proposed_incident.description
+
+    assert "Authentication latency is elevated." in response.proposed_incident.description
+
+    mock_live_status.assert_called_once_with(
+        service_name="vpn-gateway",
+    )
+
+    db_session.expire_all()
+
+    incidents_after = db_session.scalars(select(IncidentModel)).all()
+
+    assert len(incidents_after) == incident_count_before
+
+    pending = db_session.get(
+        PendingIncidentActionModel,
+        response.approval_id,
+    )
+
+    assert pending is not None
+    assert pending.approved is False
+    assert pending.executed is False
+
+
+@patch("ai_it_support_assistant.services.agent_service.get_live_service_status")
+@patch("ai_it_support_assistant.services.agent_service.route_agent_request")
+def test_reader_cannot_propose_incident(
+    mock_route_agent_request: Mock,
+    mock_live_status: Mock,
+    db_session: Session,
+) -> None:
+    mock_route_agent_request.return_value = AgentDecision(
+        action="create_incident",
+        service_name="vpn-gateway",
+        kubernetes_resource_type=None,
+        kubernetes_resource_name=None,
+        kubernetes_namespace=None,
+        incident_title="VPN gateway degradation",
+        incident_description=("Users are reporting authentication failures."),
+        incident_severity="high",
+        reasoning_summary=("The user requested incident creation."),
+    )
+
+    reader = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000009"),
+        username="reader",
+        roles=["reader"],
+    )
+
+    pending_before = db_session.scalars(select(PendingIncidentActionModel)).all()
+
+    incidents_before = db_session.scalars(select(IncidentModel)).all()
+
+    with pytest.raises(ToolAuthorizationError):
+        call_agent(
+            current_user=reader,
+            question=("Create an incident for vpn-gateway."),
+            session=db_session,
+        )
+
+    mock_live_status.assert_not_called()
+
+    pending_after = db_session.scalars(select(PendingIncidentActionModel)).all()
+
+    incidents_after = db_session.scalars(select(IncidentModel)).all()
+
+    assert len(pending_after) == len(pending_before)
+
+    assert len(incidents_after) == len(incidents_before)
+
+
+@patch("ai_it_support_assistant.services.agent_service.get_live_service_status")
+@patch("ai_it_support_assistant.services.agent_service.route_agent_request")
+def test_incident_without_service_does_not_call_live_status(
+    mock_route_agent_request: Mock,
+    mock_live_status: Mock,
+    db_session: Session,
+) -> None:
+    mock_route_agent_request.return_value = AgentDecision(
+        action="create_incident",
+        service_name=None,
+        kubernetes_resource_type=None,
+        kubernetes_resource_name=None,
+        kubernetes_namespace=None,
+        incident_title="Employee login failures",
+        incident_description=("Multiple employees report login failures."),
+        incident_severity="medium",
+        reasoning_summary=("The user explicitly requested a ticket."),
+    )
+
+    support_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000010"),
+        username="support",
+        roles=["it_support"],
+    )
+
+    response = call_agent(
+        current_user=support_user,
+        question=("Create a ticket for employee login failures."),
+        session=db_session,
+    )
+
+    assert response.action == "create_incident"
+    assert response.approval_required is True
+    assert response.incident_id is None
+
+    mock_live_status.assert_not_called()

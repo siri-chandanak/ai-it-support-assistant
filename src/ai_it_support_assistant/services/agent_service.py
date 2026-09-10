@@ -1,5 +1,7 @@
 import logging
 
+from sqlalchemy.orm import Session
+
 from ai_it_support_assistant.core.request_context import (
     get_request_id,
 )
@@ -7,9 +9,15 @@ from ai_it_support_assistant.schemas.agent import (
     AgentResponse,
 )
 from ai_it_support_assistant.schemas.auth import User
+from ai_it_support_assistant.schemas.incident import (
+    IncidentCreateRequest,
+)
 from ai_it_support_assistant.services.agent_router_service import (
     AgentRoutingError,
     route_agent_request,
+)
+from ai_it_support_assistant.services.approval_service import (
+    create_pending_incident_action,
 )
 from ai_it_support_assistant.services.kubernetes_state_service import (
     get_kubernetes_resource_state,
@@ -31,6 +39,7 @@ def handle_agent_request(
     *,
     question: str,
     current_user: User,
+    session: Session,
     embedding_model_name: str,
     qdrant_url: str,
     collection_name: str,
@@ -177,5 +186,46 @@ def handle_agent_request(
             question=question,
             action="kubernetes_state",
             answer=answer,
+        )
+    if decision.action == "create_incident":
+        authorize_tool(
+            tool_name="create_incident",
+            user=current_user,
+        )
+
+        evidence_text = "No live service evidence was available."
+
+        if decision.service_name:
+            service_status = get_live_service_status(
+                service_name=decision.service_name,
+            )
+
+            evidence_text = (
+                f"Current service status: {service_status.status}. {service_status.message}"
+            )
+
+        incident_request = IncidentCreateRequest(
+            title=decision.incident_title,
+            description=(f"{decision.incident_description}\n\nEvidence:\n{evidence_text}"),
+            severity=decision.incident_severity,
+            service_name=decision.service_name,
+        )
+
+        pending = create_pending_incident_action(
+            session=session,
+            requested_by=current_user.username,
+            incident=incident_request,
+        )
+
+        session.commit()
+
+        return AgentResponse(
+            question=question,
+            action="create_incident",
+            answer=("Incident creation requires explicit approval."),
+            approval_required=True,
+            approval_id=pending.approval_id,
+            proposed_incident=incident_request,
+            incident_id=None,
         )
     raise AgentRoutingError("Unsupported agent action.")

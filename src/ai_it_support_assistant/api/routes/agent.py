@@ -1,11 +1,15 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
 from ai_it_support_assistant.api.dependencies.auth import (
     get_current_user,
 )
 from ai_it_support_assistant.core.config import get_settings
+from ai_it_support_assistant.db.session import (
+    get_db,
+)
 from ai_it_support_assistant.schemas.agent import (
     AgentRequest,
     AgentResponse,
@@ -42,6 +46,10 @@ def ask_agent(
         User,
         Depends(get_current_user),
     ],
+    session: Annotated[
+        Session,
+        Depends(get_db),
+    ],
 ) -> AgentResponse:
     settings = get_settings()
 
@@ -49,6 +57,7 @@ def ask_agent(
         return handle_agent_request(
             question=request.question,
             current_user=current_user,
+            session=session,
             embedding_model_name=settings.embedding_model_name,
             qdrant_url=settings.qdrant_url,
             collection_name=settings.qdrant_collection_name,
