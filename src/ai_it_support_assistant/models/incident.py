@@ -14,6 +14,12 @@ class IncidentModel(Base):
         primary_key=True,
     )
 
+    idempotency_key: Mapped[str] = mapped_column(
+        String(128),
+        unique=True,
+        nullable=False,
+    )
+
     title: Mapped[str] = mapped_column(
         String(120),
         nullable=False,
@@ -97,8 +103,23 @@ class PendingIncidentActionModel(Base):
         default=False,
     )
 
+    incident_id: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(UTC),
+    )
+
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    executed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )

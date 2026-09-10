@@ -7,6 +7,12 @@ from ai_it_support_assistant.core.config import (
     get_settings,
 )
 from ai_it_support_assistant.db.base import Base
+from ai_it_support_assistant.models.audit import AuditEventModel  # noqa: F401
+from ai_it_support_assistant.models.incident import (  # noqa: F401
+    IncidentModel,
+    PendingIncidentActionModel,
+)
+from ai_it_support_assistant.models.user import UserModel  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

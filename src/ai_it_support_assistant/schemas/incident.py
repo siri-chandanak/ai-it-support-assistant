@@ -1,6 +1,7 @@
+from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 IncidentSeverity = Literal[
     "low",
@@ -11,6 +12,8 @@ IncidentSeverity = Literal[
 
 
 class IncidentCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str = Field(
         min_length=5,
         max_length=120,
@@ -27,6 +30,7 @@ class IncidentCreateRequest(BaseModel):
 
 
 class IncidentRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     incident_id: str
 
     title: str
@@ -37,3 +41,11 @@ class IncidentRecord(BaseModel):
     created_by: str
 
     status: Literal["open"] = "open"
+    created_at: datetime
+
+
+class IncidentExecutionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    incident: IncidentRecord
+    created: bool

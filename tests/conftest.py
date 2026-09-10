@@ -1,7 +1,10 @@
+import os
 from collections.abc import Generator
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -11,6 +14,9 @@ from ai_it_support_assistant.api.dependencies.auth import (
 from ai_it_support_assistant.db.session import SessionLocal
 from ai_it_support_assistant.main import app
 from ai_it_support_assistant.schemas.auth import User
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 @pytest.fixture
@@ -89,3 +95,13 @@ def support_auth_override():
         get_current_user,
         None,
     )
+
+
+@pytest.fixture
+def test_database_url() -> str:
+    database_url = os.getenv("TEST_DATABASE_URL")
+
+    if not database_url:
+        raise RuntimeError("TEST_DATABASE_URL is not set. Use a separate PostgreSQL test database.")
+
+    return database_url

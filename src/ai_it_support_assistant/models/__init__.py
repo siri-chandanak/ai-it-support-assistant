@@ -8,4 +8,5 @@ __all__ = [
     "IncidentModel",
     "PendingIncidentActionModel",
     "UserModel",
+    "AuditEventModel",
 ]

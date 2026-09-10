@@ -97,9 +97,17 @@ Rules:
    support it.
 5. Source numbers must refer only to sources provided in the
    context.
-6. If the supplied sources do not contain enough information
-   to answer the question, set insufficient_context to true,
-   provide a short explanation, and return no source numbers.
+6. Set insufficient_context to true only when the supplied
+   sources do not contain enough evidence to provide any
+   meaningful grounded answer.
+
+   If the sources support a partial but useful answer, provide
+   only the supported information, set insufficient_context to
+   false, and cite the supporting sources.
+
+   Do not mark the context insufficient merely because some
+   details, examples, commands, OS-specific steps, or a complete
+   procedure are missing.
 7. Do not claim that you executed an action.
 """.strip()
 
