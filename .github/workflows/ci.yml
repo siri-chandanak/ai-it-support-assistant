@@ -51,6 +51,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --dev
 
+      - name: Run database migrations
+        run: uv run alembic upgrade head
+
       - name: Run lint checks
         run: uv run ruff check .
 
