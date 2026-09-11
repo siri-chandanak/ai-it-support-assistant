@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy.orm import Session
 
 from ai_it_support_assistant.core.config import Settings
@@ -18,6 +20,9 @@ from ai_it_support_assistant.schemas.auth import User
 from ai_it_support_assistant.schemas.incident import (
     IncidentRecord,
 )
+from ai_it_support_assistant.schemas.kubernetes import (
+    DeploymentRestartExecutionResult,
+)
 from ai_it_support_assistant.services.action_payload_service import (
     parse_incident_payload,
     parse_restart_payload,
@@ -37,7 +42,11 @@ from ai_it_support_assistant.services.authorization_service import (
 from ai_it_support_assistant.services.incident_service import (
     create_incident,
 )
+from ai_it_support_assistant.services.kubernetes_rollout_service import (
+    monitor_deployment_rollout,
+)
 from ai_it_support_assistant.services.kubernetes_state_service import (
+    KubernetesResourceNotFoundError,
     get_deployment_state,
 )
 from ai_it_support_assistant.services.kubernetes_write_policy_service import (
@@ -48,6 +57,8 @@ from ai_it_support_assistant.services.kubernetes_write_service import (
     deployment_has_restart_token,
     restart_deployment,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ApprovalOwnershipError(Exception):
@@ -148,6 +159,84 @@ def _audit_execution_failed(
         details={
             "previous_state": "executing",
             "new_state": "failed",
+        },
+    )
+
+
+def _audit_restart_applied(
+    *,
+    session: Session,
+    approval_id: str,
+    actor: str,
+    resource_id: str,
+    namespace: str,
+    deployment_name: str,
+) -> None:
+    record_audit_event(
+        session=session,
+        event_type="KUBERNETES_RESTART_APPLIED",
+        actor=actor,
+        action_type="restart_deployment",
+        approval_id=approval_id,
+        resource_id=resource_id,
+        details={
+            "namespace": namespace,
+            "deployment": deployment_name,
+        },
+    )
+
+
+def _audit_rollout_monitor_started(
+    *,
+    session: Session,
+    approval_id: str,
+    actor: str,
+    resource_id: str,
+    namespace: str,
+    deployment_name: str,
+) -> None:
+    record_audit_event(
+        session=session,
+        event_type="ROLLOUT_MONITOR_STARTED",
+        actor=actor,
+        action_type="restart_deployment",
+        approval_id=approval_id,
+        resource_id=resource_id,
+        details={
+            "namespace": namespace,
+            "deployment": deployment_name,
+        },
+    )
+
+
+def _audit_rollout_result(
+    *,
+    session: Session,
+    approval_id: str,
+    actor: str,
+    resource_id: str,
+    namespace: str,
+    deployment_name: str,
+    event_type: str,
+    desired_replicas: int,
+    updated_replicas: int,
+    ready_replicas: int,
+    available_replicas: int,
+) -> None:
+    record_audit_event(
+        session=session,
+        event_type=event_type,
+        actor=actor,
+        action_type="restart_deployment",
+        approval_id=approval_id,
+        resource_id=resource_id,
+        details={
+            "namespace": namespace,
+            "deployment": deployment_name,
+            "desired_replicas": str(desired_replicas),
+            "updated_replicas": str(updated_replicas),
+            "ready_replicas": str(ready_replicas),
+            "available_replicas": str(available_replicas),
         },
     )
 
@@ -552,43 +641,193 @@ def execute_restart_deployment_action(
     #
     # restartedAt == persisted execution_token
     #
-    # This means the restart REQUEST was applied.
-    # It does NOT yet prove all new Pods are healthy.
+    # This proves the restart REQUEST was applied.
+    # It does NOT yet prove the rollout became healthy.
     #
-    current_action = get_pending_action(
+
+    _audit_restart_applied(
         session=session,
         approval_id=approval_id,
+        actor=current_user.username,
+        resource_id=resource_id,
+        namespace=payload.namespace,
+        deployment_name=payload.name,
     )
 
-    if current_action is None:
-        raise KubernetesRestartExecutionError(
-            "Restart was applied but action could not be reloaded."
-        )
+    _audit_rollout_monitor_started(
+        session=session,
+        approval_id=approval_id,
+        actor=current_user.username,
+        resource_id=resource_id,
+        namespace=payload.namespace,
+        deployment_name=payload.name,
+    )
+
+    #
+    # Persist the audit records before polling.
+    #
+    # Important:
+    # Do not keep a PostgreSQL transaction open
+    # during potentially long Kubernetes polling.
+    #
+    session.commit()
 
     try:
-        mark_action_succeeded(
-            session=session,
-            approval_id=approval_id,
-            expected_version=current_action.version,
-            resource_id=resource_id,
+        rollout_result = monitor_deployment_rollout(
+            name=payload.name,
+            namespace=payload.namespace,
+            timeout_seconds=(settings.kubernetes_rollout_timeout_seconds),
+            poll_interval_seconds=(settings.kubernetes_rollout_poll_interval_seconds),
+            max_read_failures=(settings.kubernetes_rollout_max_read_failures),
+            config_mode=(settings.kubernetes_config_mode),
+            context=settings.kubernetes_context,
         )
 
-    except ConcurrentActionUpdateError as exc:
-        session.rollback()
+    except KubernetesResourceNotFoundError as exc:
+        _mark_restart_failed(
+            session=session,
+            approval_id=approval_id,
+            current_user=current_user,
+            resource_id=resource_id,
+            failure_reason="deployment_disappeared",
+        )
 
         raise KubernetesRestartExecutionError(
-            "Restart was applied but action state could not be finalized."
+            "Deployment disappeared while monitoring the rollout."
         ) from exc
 
-    _audit_execution_succeeded(
-        session=session,
-        approval_id=approval_id,
-        action_type="restart_deployment",
-        resource_id=resource_id,
-        actor=current_user.username,
+    result = DeploymentRestartExecutionResult(
+        name=payload.name,
+        namespace=payload.namespace,
+        restart_applied=True,
+        rollout_outcome=rollout_result.outcome,
+        desired_replicas=(rollout_result.desired_replicas),
+        updated_replicas=(rollout_result.updated_replicas),
+        ready_replicas=(rollout_result.ready_replicas),
+        available_replicas=(rollout_result.available_replicas),
     )
 
-    session.commit()
+    result_json = result.model_dump_json()
+
+    #
+    # Rollout succeeded.
+    #
+    if rollout_result.outcome == "healthy":
+        _audit_rollout_result(
+            session=session,
+            approval_id=approval_id,
+            actor=current_user.username,
+            resource_id=resource_id,
+            namespace=payload.namespace,
+            deployment_name=payload.name,
+            event_type="ROLLOUT_HEALTHY",
+            desired_replicas=(rollout_result.desired_replicas),
+            updated_replicas=(rollout_result.updated_replicas),
+            ready_replicas=(rollout_result.ready_replicas),
+            available_replicas=(rollout_result.available_replicas),
+        )
+
+        current_action = get_pending_action(
+            session=session,
+            approval_id=approval_id,
+        )
+
+        if current_action is None:
+            raise KubernetesRestartExecutionError(
+                "Rollout became healthy but action could not be reloaded."
+            )
+
+        try:
+            mark_action_succeeded(
+                session=session,
+                approval_id=approval_id,
+                expected_version=current_action.version,
+                resource_id=resource_id,
+                result_json=result_json,
+            )
+
+        except ConcurrentActionUpdateError as exc:
+            session.rollback()
+
+            raise KubernetesRestartExecutionError(
+                "Rollout became healthy but action state could not be finalized."
+            ) from exc
+
+        _audit_execution_succeeded(
+            session=session,
+            approval_id=approval_id,
+            action_type="restart_deployment",
+            resource_id=resource_id,
+            actor=current_user.username,
+        )
+
+        session.commit()
+
+    #
+    # Restart was applied, but rollout timed out.
+    #
+    elif rollout_result.outcome == "timeout":
+        _audit_rollout_result(
+            session=session,
+            approval_id=approval_id,
+            actor=current_user.username,
+            resource_id=resource_id,
+            namespace=payload.namespace,
+            deployment_name=payload.name,
+            event_type="ROLLOUT_TIMEOUT",
+            desired_replicas=(rollout_result.desired_replicas),
+            updated_replicas=(rollout_result.updated_replicas),
+            ready_replicas=(rollout_result.ready_replicas),
+            available_replicas=(rollout_result.available_replicas),
+        )
+
+        session.commit()
+
+        _mark_restart_failed(
+            session=session,
+            approval_id=approval_id,
+            current_user=current_user,
+            resource_id=resource_id,
+            failure_reason="rollout_timeout",
+            result_json=result_json,
+        )
+
+        raise KubernetesRestartExecutionError(
+            "Deployment restart was applied, but the rollout did not become healthy before timeout."
+        )
+
+    #
+    # Kubernetes explicitly reported rollout failure,
+    # such as ProgressDeadlineExceeded.
+    #
+    else:
+        _audit_rollout_result(
+            session=session,
+            approval_id=approval_id,
+            actor=current_user.username,
+            resource_id=resource_id,
+            namespace=payload.namespace,
+            deployment_name=payload.name,
+            event_type="ROLLOUT_FAILED",
+            desired_replicas=(rollout_result.desired_replicas),
+            updated_replicas=(rollout_result.updated_replicas),
+            ready_replicas=(rollout_result.ready_replicas),
+            available_replicas=(rollout_result.available_replicas),
+        )
+        session.commit()
+
+        _mark_restart_failed(
+            session=session,
+            approval_id=approval_id,
+            current_user=current_user,
+            resource_id=resource_id,
+            failure_reason=("rollout_progress_deadline_exceeded"),
+            result_json=result_json,
+        )
+
+        raise KubernetesRestartExecutionError(
+            "Deployment restart was applied, but Kubernetes reported that the rollout failed."
+        )
 
     final_action = get_pending_action(
         session=session,
@@ -597,7 +836,7 @@ def execute_restart_deployment_action(
 
     if final_action is None:
         raise KubernetesRestartExecutionError(
-            "Restart succeeded but final action could not be loaded."
+            "Restart rollout completed but final action could not be loaded."
         )
 
     return final_action
@@ -643,6 +882,7 @@ def _mark_restart_failed(
     current_user: User,
     resource_id: str,
     failure_reason: str,
+    result_json: str | None = None,
 ) -> None:
     session.rollback()
 
@@ -663,6 +903,7 @@ def _mark_restart_failed(
             approval_id=approval_id,
             expected_version=current_action.version,
             failure_reason=failure_reason,
+            result_json=result_json,
         )
 
         _audit_execution_failed(

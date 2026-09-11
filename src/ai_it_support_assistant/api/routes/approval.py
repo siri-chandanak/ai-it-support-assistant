@@ -1,3 +1,4 @@
+import json
 from typing import Annotated
 
 from fastapi import (
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from ai_it_support_assistant.api.dependencies.auth import (
     get_current_user,
 )
+from ai_it_support_assistant.core.config import get_settings
 from ai_it_support_assistant.db.session import (
     get_db,
 )
@@ -32,6 +34,7 @@ from ai_it_support_assistant.services.action_execution_service import (
     ActionRejectedError,
     IncidentExecutionError,
     execute_incident_action,
+    execute_restart_deployment_action,
 )
 from ai_it_support_assistant.services.approval_service import (
     ApprovalNotFoundError,
@@ -70,8 +73,12 @@ def execute_approved_action(
                 approval_id=rejected_action.approval_id,
                 action=rejected_action.action,
                 state=rejected_action.state,
-                incident_id=rejected_action.incident_id,
+                resource_id=rejected_action.resource_id,
+                execution_token=rejected_action.execution_token,
                 failure_reason=rejected_action.failure_reason,
+                result=_parse_action_result(
+                    rejected_action.result_json,
+                ),
             )
 
         action = get_pending_action(
@@ -82,24 +89,46 @@ def execute_approved_action(
         if action is None:
             raise ApprovalNotFoundError("Approval request was not found.")
 
-        if action.state == "succeeded":
+        if action.state == "pending":
+            action = approve_pending_action(
+                session=session,
+                approval_id=request.approval_id,
+                approved_by=current_user.username,
+            )
+
+        #
+        # Route execution based on action type.
+        #
+        if action.action == "create_incident":
             return execute_incident_action(
                 session=session,
                 approval_id=request.approval_id,
                 current_user=current_user,
             )
 
-        if action.state == "pending":
-            approve_pending_action(
+        if action.action == "restart_deployment":
+            executed_action = execute_restart_deployment_action(
                 session=session,
                 approval_id=request.approval_id,
-                approved_by=current_user.username,
+                current_user=current_user,
+                settings=get_settings(),
             )
 
-        return execute_incident_action(
-            session=session,
-            approval_id=request.approval_id,
-            current_user=current_user,
+            return ApprovalStatusResponse(
+                approval_id=executed_action.approval_id,
+                action=executed_action.action,
+                state=executed_action.state,
+                resource_id=executed_action.resource_id,
+                execution_token=executed_action.execution_token,
+                failure_reason=executed_action.failure_reason,
+                result=_parse_action_result(
+                    executed_action.result_json,
+                ),
+            )
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported action type: {action.action}",
         )
 
     except ApprovalNotFoundError as exc:
@@ -130,6 +159,23 @@ def execute_approved_action(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=str(exc),
         ) from exc
+
+
+def _parse_action_result(
+    result_json: str | None,
+) -> dict[str, object] | None:
+    if result_json is None:
+        return None
+
+    try:
+        result = json.loads(result_json)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(result, dict):
+        return None
+
+    return result
 
 
 @router.get(
@@ -171,4 +217,7 @@ def get_approval_status(
         resource_id=action.resource_id,
         execution_token=action.execution_token,
         failure_reason=action.failure_reason,
+        result=_parse_action_result(
+            action.result_json,
+        ),
     )
