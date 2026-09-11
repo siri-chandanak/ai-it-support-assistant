@@ -49,7 +49,7 @@ def test_pending_action_is_not_approved_or_executed(
     assert persisted.approval_id == action.approval_id
     assert persisted.requested_by == "support"
     assert persisted.state == "pending"
-    assert persisted.incident_id is None
+    assert persisted.resource_id is None
 
 
 def test_other_user_cannot_approve_action(
@@ -107,7 +107,7 @@ def test_approval_is_persisted(
 
     assert persisted is not None
     assert persisted.state == "approved"
-    assert persisted.incident_id is None
+    assert persisted.resource_id is None
 
 
 def test_executed_action_cannot_be_approved_again(
@@ -143,7 +143,7 @@ def test_executed_action_cannot_be_approved_again(
         session=db_session,
         approval_id=approved.approval_id,
         expected_version=executing_version,
-        incident_id="INC-TEST-001",
+        resource_id="INC-TEST-001",
     )
 
     db_session.commit()
@@ -249,7 +249,7 @@ def test_executed_approval_records_incident_id(
 
     assert persisted is not None
     assert persisted.state == "succeeded"
-    assert persisted.incident_id == incident_id
+    assert persisted.resource_id == incident_id
 
 
 def test_same_approval_cannot_create_duplicate_incident(
@@ -305,7 +305,7 @@ def test_same_approval_cannot_create_duplicate_incident(
 
     assert persisted is not None
     assert persisted.state == "succeeded"
-    assert persisted.incident_id == first_incident_id
+    assert persisted.resource_id == first_incident_id
 
 
 def test_invalid_approval_returns_404(

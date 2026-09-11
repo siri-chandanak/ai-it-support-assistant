@@ -58,8 +58,8 @@ class IncidentModel(Base):
     )
 
 
-class PendingIncidentActionModel(Base):
-    __tablename__ = "pending_incident_actions"
+class PendingActionModel(Base):
+    __tablename__ = "pending_actions"
 
     approval_id: Mapped[str] = mapped_column(
         String(32),
@@ -71,30 +71,15 @@ class PendingIncidentActionModel(Base):
         nullable=False,
     )
 
-    incident_title: Mapped[str] = mapped_column(
-        String(120),
-        nullable=False,
-    )
-
-    incident_description: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-    )
-
-    incident_severity: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-    )
-
-    service_name: Mapped[str | None] = mapped_column(
-        String(120),
-        nullable=True,
-    )
-
     action: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
         default="create_incident",
+    )
+
+    payload_json: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
     )
 
     state: Mapped[str] = mapped_column(
@@ -109,8 +94,13 @@ class PendingIncidentActionModel(Base):
         default=1,
     )
 
-    incident_id: Mapped[str | None] = mapped_column(
-        String(32),
+    resource_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    execution_token: Mapped[str | None] = mapped_column(
+        String(128),
         nullable=True,
     )
 
@@ -137,5 +127,30 @@ class PendingIncidentActionModel(Base):
 
     failure_reason: Mapped[str | None] = mapped_column(
         String(255),
+        nullable=True,
+    )
+
+    incident_title: Mapped[str | None] = mapped_column(
+        String(120),
+        nullable=True,
+    )
+
+    incident_description: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    incident_severity: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
+
+    service_name: Mapped[str | None] = mapped_column(
+        String(120),
+        nullable=True,
+    )
+
+    incident_id: Mapped[str | None] = mapped_column(
+        String(32),
         nullable=True,
     )

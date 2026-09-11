@@ -168,6 +168,7 @@ def get_approval_status(
         approval_id=action.approval_id,
         action=action.action,
         state=action.state,
-        incident_id=action.incident_id,
+        resource_id=action.resource_id,
+        execution_token=action.execution_token,
         failure_reason=action.failure_reason,
     )

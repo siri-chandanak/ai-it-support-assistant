@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from ai_it_support_assistant.models.incident import (
     IncidentModel,
-    PendingIncidentActionModel,
+    PendingActionModel,
 )
 from ai_it_support_assistant.schemas.agent import (
     AgentDecision,
@@ -42,11 +42,14 @@ def _agent_kwargs() -> dict[str, object]:
         "llm_model": "test-model",
         "openai_timeout_seconds": 5.0,
         "openai_max_retries": 1,
-        "embedding_cache_enabled": False,
-        "retrieval_cache_enabled": False,
         "kubernetes_config_mode": "local",
         "kubernetes_context": "kind-kin",
+        "kubernetes_write_enabled": False,
+        "kubernetes_restart_allowed_namespaces": ("dev,development"),
+        "kubernetes_restart_allowed_deployments": "",
         "kubernetes_default_namespace": "ai-it-support-test",
+        "embedding_cache_enabled": False,
+        "retrieval_cache_enabled": False,
     }
 
 
@@ -449,7 +452,7 @@ def test_it_support_can_propose_incident_without_executing_write(
     assert len(incidents_after) == incident_count_before
 
     pending = db_session.get(
-        PendingIncidentActionModel,
+        PendingActionModel,
         response.approval_id,
     )
 
@@ -483,7 +486,7 @@ def test_reader_cannot_propose_incident(
         roles=["reader"],
     )
 
-    pending_before = db_session.scalars(select(PendingIncidentActionModel)).all()
+    pending_before = db_session.scalars(select(PendingActionModel)).all()
 
     incidents_before = db_session.scalars(select(IncidentModel)).all()
 
@@ -496,7 +499,7 @@ def test_reader_cannot_propose_incident(
 
     mock_live_status.assert_not_called()
 
-    pending_after = db_session.scalars(select(PendingIncidentActionModel)).all()
+    pending_after = db_session.scalars(select(PendingActionModel)).all()
 
     incidents_after = db_session.scalars(select(IncidentModel)).all()
 

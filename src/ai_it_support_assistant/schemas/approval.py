@@ -6,6 +6,9 @@ from pydantic import BaseModel, ConfigDict
 from ai_it_support_assistant.schemas.incident import (
     IncidentCreateRequest,
 )
+from ai_it_support_assistant.schemas.kubernetes import (
+    DeploymentRestartActionPayload,
+)
 
 ActionState = Literal[
     "pending",
@@ -16,42 +19,71 @@ ActionState = Literal[
     "rejected",
 ]
 
+ActionType = Literal[
+    "create_incident",
+    "restart_deployment",
+]
 
-class PendingIncidentAction(BaseModel):
+
+class PendingAction(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
 
     approval_id: str
 
-    action: Literal["create_incident"] = "create_incident"
+    action: ActionType
 
     requested_by: str
 
-    incident: IncidentCreateRequest
+    payload_json: str
 
     state: ActionState = "pending"
 
-    incident_id: str | None = None
+    resource_id: str | None = None
+
+    execution_token: str | None = None
 
     failure_reason: str | None = None
 
     version: int = 1
 
     execution_started_at: datetime | None = None
+
     completed_at: datetime | None = None
 
 
 class ApprovalExecuteRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+
     approval_id: str
+
     approve: bool
 
 
 class ApprovalStatusResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+    )
 
     approval_id: str
-    action: str
+
+    action: ActionType
+
     state: ActionState
-    incident_id: str | None = None
+
+    resource_id: str | None = None
+
+    execution_token: str | None = None
+
     failure_reason: str | None = None
+
+
+class IncidentActionPayload(IncidentCreateRequest):
+    pass
+
+
+class RestartActionPayload(DeploymentRestartActionPayload):
+    pass

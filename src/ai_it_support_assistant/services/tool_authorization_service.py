@@ -18,6 +18,9 @@ TOOL_ALLOWED_ROLES: dict[str, set[str]] = {
         "it_support",
         "admin",
     },
+    "restart_deployment": {
+        "admin",
+    },
 }
 
 

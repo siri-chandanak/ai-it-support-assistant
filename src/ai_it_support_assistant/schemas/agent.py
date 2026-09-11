@@ -5,8 +5,17 @@ from pydantic import BaseModel, ConfigDict, Field
 from ai_it_support_assistant.schemas.incident import (
     IncidentCreateRequest,
 )
+from ai_it_support_assistant.schemas.kubernetes import (
+    DeploymentRestartActionPayload,
+)
 
-AgentAction = Literal["rag", "live_status", "kubernetes_state", "create_incident"]
+AgentAction = Literal[
+    "rag",
+    "live_status",
+    "kubernetes_state",
+    "create_incident",
+    "restart_deployment",
+]
 
 KubernetesResourceType = Literal[
     "deployment",
@@ -64,6 +73,8 @@ class AgentResponse(BaseModel):
     approval_id: str | None = None
 
     proposed_incident: IncidentCreateRequest | None = None
+
+    proposed_restart: DeploymentRestartActionPayload | None = None
 
     incident_id: str | None = None
 
