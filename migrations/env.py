@@ -10,7 +10,7 @@ from ai_it_support_assistant.db.base import Base
 from ai_it_support_assistant.models.audit import AuditEventModel  # noqa: F401
 from ai_it_support_assistant.models.incident import (  # noqa: F401
     IncidentModel,
-    PendingIncidentActionModel,
+    PendingActionModel,
 )
 from ai_it_support_assistant.models.user import UserModel  # noqa: F401
 

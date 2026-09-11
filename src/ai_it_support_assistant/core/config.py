@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     kubernetes_context: str = ""
     kubernetes_default_namespace: str = "ai-it-support-test"
 
+    kubernetes_write_enabled: bool = False
+    kubernetes_restart_allowed_namespaces: str = "dev,development"
+    kubernetes_restart_allowed_deployments: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

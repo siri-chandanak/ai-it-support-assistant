@@ -1,13 +1,19 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from uuid import UUID
 
 import pytest
 
 from ai_it_support_assistant.schemas.agent import AgentDecision
+from ai_it_support_assistant.schemas.auth import User
 from ai_it_support_assistant.services.agent_router_service import (
     AgentRoutingError,
     route_agent_request,
     validate_agent_decision,
+)
+from ai_it_support_assistant.services.tool_authorization_service import (
+    ToolAuthorizationError,
+    authorize_tool,
 )
 
 
@@ -339,3 +345,127 @@ def test_router_rejects_kubernetes_state_without_resource_name() -> None:
                 timeout_seconds=5.0,
                 max_retries=1,
             )
+
+
+def test_restart_deployment_requires_namespace():
+    decision = AgentDecision(
+        action="restart_deployment",
+        service_name=None,
+        kubernetes_resource_type="deployment",
+        kubernetes_resource_name="payment-api",
+        kubernetes_namespace=None,
+        incident_title=None,
+        incident_description=None,
+        incident_severity=None,
+        reasoning_summary=("User requested restart."),
+    )
+
+    with pytest.raises(
+        AgentRoutingError,
+        match="requires namespace",
+    ):
+        validate_agent_decision(decision)
+
+
+def test_restart_deployment_requires_deployment_type():
+    decision = AgentDecision(
+        action="restart_deployment",
+        service_name=None,
+        kubernetes_resource_type="pod",
+        kubernetes_resource_name="payment-api-123",
+        kubernetes_namespace="dev",
+        incident_title=None,
+        incident_description=None,
+        incident_severity=None,
+        reasoning_summary=("User requested restart."),
+    )
+
+    with pytest.raises(
+        AgentRoutingError,
+        match="only supports deployments",
+    ):
+        validate_agent_decision(decision)
+
+
+def test_restart_deployment_requires_name():
+    decision = AgentDecision(
+        action="restart_deployment",
+        service_name=None,
+        kubernetes_resource_type="deployment",
+        kubernetes_resource_name=None,
+        kubernetes_namespace="dev",
+        incident_title=None,
+        incident_description=None,
+        incident_severity=None,
+        reasoning_summary=("User requested restart."),
+    )
+
+    with pytest.raises(
+        AgentRoutingError,
+        match="requires deployment name",
+    ):
+        validate_agent_decision(decision)
+
+
+def test_restart_deployment_rejects_incident_fields():
+    decision = AgentDecision(
+        action="restart_deployment",
+        service_name=None,
+        kubernetes_resource_type="deployment",
+        kubernetes_resource_name="payment-api",
+        kubernetes_namespace="dev",
+        incident_title="Restart",
+        incident_description=None,
+        incident_severity=None,
+        reasoning_summary=("User requested restart."),
+    )
+
+    with pytest.raises(
+        AgentRoutingError,
+        match="cannot include incident",
+    ):
+        validate_agent_decision(decision)
+
+
+def test_reader_cannot_restart_deployment():
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        username="reader",
+        roles=["reader"],
+        disabled=False,
+    )
+
+    with pytest.raises(ToolAuthorizationError):
+        authorize_tool(
+            tool_name="restart_deployment",
+            user=user,
+        )
+
+
+def test_admin_can_request_restart_deployment():
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000002"),
+        username="admin",
+        roles=["admin"],
+        disabled=False,
+    )
+
+    authorize_tool(
+        tool_name="restart_deployment",
+        user=user,
+    )
+
+
+def test_it_support_cannot_restart_deployment():
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000003"),
+        username="it-support",
+        roles=["it_support"],
+        disabled=False,
+    )
+
+    with pytest.raises(ToolAuthorizationError):
+        authorize_tool(
+            tool_name="restart_deployment",
+            user=user,
+        )

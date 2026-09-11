@@ -12,15 +12,24 @@ from ai_it_support_assistant.schemas.auth import User
 from ai_it_support_assistant.schemas.incident import (
     IncidentCreateRequest,
 )
+from ai_it_support_assistant.schemas.kubernetes import (
+    DeploymentRestartActionPayload,
+)
 from ai_it_support_assistant.services.agent_router_service import (
     AgentRoutingError,
     route_agent_request,
 )
 from ai_it_support_assistant.services.approval_service import (
+    create_pending_action,
     create_pending_incident_action,
 )
 from ai_it_support_assistant.services.kubernetes_state_service import (
+    get_deployment_state,
     get_kubernetes_resource_state,
+)
+from ai_it_support_assistant.services.kubernetes_write_policy_service import (
+    KubernetesWritePolicyError,
+    validate_restart_policy,
 )
 from ai_it_support_assistant.services.live_status_service import (
     get_live_service_status,
@@ -54,6 +63,9 @@ def handle_agent_request(
     kubernetes_config_mode: str,
     kubernetes_context: str,
     kubernetes_default_namespace: str,
+    kubernetes_write_enabled: bool,
+    kubernetes_restart_allowed_namespaces: str,
+    kubernetes_restart_allowed_deployments: str,
     embedding_cache_enabled: bool,
     retrieval_cache_enabled: bool,
 ) -> AgentResponse:
@@ -227,5 +239,144 @@ def handle_agent_request(
             approval_id=pending.approval_id,
             proposed_incident=incident_request,
             incident_id=None,
+        )
+    if decision.action == "restart_deployment":
+        deployment_name = decision.kubernetes_resource_name
+        namespace = decision.kubernetes_namespace
+
+        # Unlike read-only Kubernetes requests,
+        # write requests NEVER default the namespace.
+        if deployment_name is None:
+            raise AgentRoutingError("Deployment name is required.")
+
+        if namespace is None:
+            raise AgentRoutingError("Namespace is required for restart_deployment.")
+
+        # -----------------------------------------------------
+        # Layer 1: user/tool authorization
+        # -----------------------------------------------------
+
+        authorize_tool(
+            tool_name="restart_deployment",
+            user=current_user,
+        )
+
+        # -----------------------------------------------------
+        # Layer 2: deterministic resource policy
+        # -----------------------------------------------------
+
+        validate_restart_policy(
+            namespace=namespace,
+            deployment_name=deployment_name,
+            write_enabled=kubernetes_write_enabled,
+            allowed_namespaces_raw=(kubernetes_restart_allowed_namespaces),
+            allowed_deployments_raw=(kubernetes_restart_allowed_deployments),
+        )
+
+        logger.info(
+            ("restart_proposal_evidence_started request_id=%s namespace=%s deployment=%s"),
+            get_request_id(),
+            namespace,
+            deployment_name,
+        )
+
+        # -----------------------------------------------------
+        # READ ONLY:
+        # Gather authoritative Kubernetes evidence.
+        # No Kubernetes write occurs here.
+        # -----------------------------------------------------
+
+        deployment_state = get_deployment_state(
+            name=deployment_name,
+            namespace=namespace,
+            config_mode=kubernetes_config_mode,
+            context=kubernetes_context,
+        )
+
+        logger.info(
+            (
+                "restart_proposal_evidence_completed "
+                "request_id=%s "
+                "namespace=%s "
+                "deployment=%s "
+                "desired=%s "
+                "ready=%s "
+                "available=%s"
+            ),
+            get_request_id(),
+            deployment_state.namespace,
+            deployment_state.name,
+            deployment_state.desired_replicas,
+            deployment_state.ready_replicas,
+            deployment_state.available_replicas,
+        )
+
+        # -----------------------------------------------------
+        # Reject Deployment scaled to zero.
+        # -----------------------------------------------------
+
+        if deployment_state.desired_replicas == 0:
+            raise KubernetesWritePolicyError(
+                "Cannot propose restart for a Deployment with zero desired replicas."
+            )
+
+        # -----------------------------------------------------
+        # Deterministic warnings
+        # -----------------------------------------------------
+
+        warnings: list[str] = []
+
+        if deployment_state.desired_replicas == 1:
+            warnings.append(
+                "Deployment has one desired replica; restart may cause temporary unavailability."
+            )
+
+        # -----------------------------------------------------
+        # Build the exact validated payload that the
+        # user will approve.
+        # -----------------------------------------------------
+
+        restart_payload = DeploymentRestartActionPayload(
+            name=deployment_state.name,
+            namespace=deployment_state.namespace,
+            evidence_desired_replicas=(deployment_state.desired_replicas),
+            evidence_ready_replicas=(deployment_state.ready_replicas),
+            evidence_available_replicas=(deployment_state.available_replicas),
+            warnings=warnings,
+        )
+
+        # -----------------------------------------------------
+        # Persist only the PROPOSAL.
+        #
+        # State = pending.
+        # No execution token.
+        # No resource result.
+        # No Kubernetes PATCH.
+        # -----------------------------------------------------
+
+        pending = create_pending_action(
+            session=session,
+            requested_by=current_user.username,
+            action_type="restart_deployment",
+            payload_json=(restart_payload.model_dump_json()),
+        )
+
+        session.commit()
+
+        logger.info(
+            ("restart_proposal_created request_id=%s approval_id=%s namespace=%s deployment=%s"),
+            get_request_id(),
+            pending.approval_id,
+            restart_payload.namespace,
+            restart_payload.name,
+        )
+
+        return AgentResponse(
+            question=question,
+            action="restart_deployment",
+            answer=("Deployment restart requires explicit approval."),
+            approval_required=True,
+            approval_id=pending.approval_id,
+            proposed_restart=restart_payload,
         )
     raise AgentRoutingError("Unsupported agent action.")

@@ -105,6 +105,30 @@ def validate_agent_decision(
             ]
         ):
             raise AgentRoutingError("create_incident cannot contain Kubernetes arguments.")
+
+    elif decision.action == "restart_deployment":
+        if decision.kubernetes_resource_type != "deployment":
+            raise AgentRoutingError("restart_deployment only supports deployments.")
+
+        if not decision.kubernetes_resource_name:
+            raise AgentRoutingError("restart_deployment requires deployment name.")
+
+        if not decision.kubernetes_namespace:
+            raise AgentRoutingError("restart_deployment requires namespace.")
+
+        if decision.service_name is not None:
+            raise AgentRoutingError("restart_deployment cannot include service_name.")
+
+        if any(
+            value is not None
+            for value in [
+                decision.incident_title,
+                decision.incident_description,
+                decision.incident_severity,
+            ]
+        ):
+            raise AgentRoutingError("restart_deployment cannot include incident arguments.")
+
     else:
         raise AgentRoutingError(f"Unsupported agent action: {decision.action}")
 
@@ -297,6 +321,33 @@ Rules:
 - If the question is ambiguous and does not clearly require live data
   or a write action, prefer rag.
 - Keep reasoning_summary short.
+
+5. restart_deployment
+
+Use this action only when the user explicitly asks to restart
+or roll out a specific Kubernetes Deployment.
+
+Requirements:
+- kubernetes_resource_type must be "deployment"
+- extract the exact Deployment name
+- extract an explicit Kubernetes namespace
+- if namespace is not provided, do NOT invent one
+- service_name must be null
+- incident fields must be null
+- do not execute anything
+- do not claim the restart happened
+- the application requires explicit approval before execution
+
+Important routing distinction:
+
+A question asking HOW to restart a Kubernetes Deployment is a
+documentation question and should use "rag".
+
+A question asking for current Deployment state should use
+"kubernetes_state".
+
+An explicit request to actually restart a Deployment should use
+"restart_deployment".
 """.strip()
 
     try:

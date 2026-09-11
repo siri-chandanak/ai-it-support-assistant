@@ -7,8 +7,20 @@ VALID_ROLES = {
 }
 
 TOOL_ALLOWED_ROLES: dict[str, set[str]] = {
+    "live_status": {
+        "reader",
+        "it_support",
+        "admin",
+    },
+    "kubernetes_state": {
+        "it_support",
+        "admin",
+    },
     "create_incident": {
         "it_support",
+        "admin",
+    },
+    "restart_deployment": {
         "admin",
     },
 }
