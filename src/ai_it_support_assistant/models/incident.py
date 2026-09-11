@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, String, Text
+from sqlalchemy import DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ai_it_support_assistant.db.base import Base
@@ -91,16 +91,22 @@ class PendingIncidentActionModel(Base):
         nullable=True,
     )
 
-    approved: Mapped[bool] = mapped_column(
-        Boolean,
+    action: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        default=False,
+        default="create_incident",
     )
 
-    executed: Mapped[bool] = mapped_column(
-        Boolean,
+    state: Mapped[str] = mapped_column(
+        String(20),
         nullable=False,
-        default=False,
+        default="pending",
+        index=True,
+    )
+
+    version: Mapped[int] = mapped_column(
+        nullable=False,
+        default=1,
     )
 
     incident_id: Mapped[str | None] = mapped_column(
@@ -119,7 +125,17 @@ class PendingIncidentActionModel(Base):
         nullable=True,
     )
 
-    executed_at: Mapped[datetime | None] = mapped_column(
+    execution_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
+    )
+
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    failure_reason: Mapped[str | None] = mapped_column(
+        String(255),
         nullable=True,
     )

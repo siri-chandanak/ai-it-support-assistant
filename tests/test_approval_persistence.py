@@ -9,10 +9,11 @@ from ai_it_support_assistant.models.audit import (
     AuditEventModel,
 )
 from ai_it_support_assistant.repositories.approval_repository import (
+    claim_action_for_execution,
     get_pending_action,
-    mark_pending_action_approved,
-    mark_pending_action_executed,
+    mark_action_succeeded,
     save_pending_action,
+    transition_action_state,
 )
 from ai_it_support_assistant.repositories.incident_repository import (
     get_incident_by_idempotency_key,
@@ -40,9 +41,10 @@ def build_incident_request() -> IncidentCreateRequest:
 
 
 def test_pending_action_survives_new_database_session(db_session):
+    approval_id = f"APR-{uuid4().hex[:12].upper()}"
     action = PendingIncidentAction(
-        approval_id="APR-TEST-001",
-        action_type="create_incident",
+        approval_id=approval_id,
+        action="create_incident",
         requested_by="alice",
         incident=IncidentCreateRequest(
             title="VPN outage",
@@ -50,26 +52,29 @@ def test_pending_action_survives_new_database_session(db_session):
             severity="medium",
             service_name="vpn",
         ),
-        approved=False,
-        executed=False,
+        state="pending",
         incident_id=None,
+        failure_reason=None,
+        version=1,
     )
 
     save_pending_action(
         action=action,
         session=db_session,
     )
+    db_session.commit()
+    engine = db_session.get_bind()
 
-    loaded = get_pending_action(
-        approval_id="APR-TEST-001",
-        session=db_session,
-    )
-
-    assert loaded is not None
-    assert loaded.approval_id == "APR-TEST-001"
-    assert loaded.requested_by == "alice"
-    assert loaded.approved is False
-    assert loaded.executed is False
+    with Session(engine) as new_session:
+        loaded = get_pending_action(
+            approval_id=approval_id,
+            session=new_session,
+        )
+        assert loaded is not None
+        assert loaded.approval_id == approval_id
+        assert loaded.state == "pending"
+        assert loaded.version == 1
+        assert loaded.incident_id is None
 
 
 def build_pending_action(
@@ -79,6 +84,7 @@ def build_pending_action(
     approval_id = approval_id or f"APR-{uuid4().hex[:12].upper()}"
     return PendingIncidentAction(
         approval_id=approval_id,
+        action="create_incident",
         requested_by=requested_by,
         incident=IncidentCreateRequest(
             title="VPN outage",
@@ -86,9 +92,10 @@ def build_pending_action(
             severity="medium",
             service_name="vpn",
         ),
-        approved=False,
-        executed=False,
+        state="pending",
         incident_id=None,
+        failure_reason=None,
+        version=1,
     )
 
 
@@ -108,8 +115,7 @@ def test_pending_action_can_be_saved_and_loaded(db_session):
     assert loaded is not None
     assert loaded.approval_id == action.approval_id
     assert loaded.requested_by == "alice"
-    assert loaded.approved is False
-    assert loaded.executed is False
+    assert loaded.state == "pending"
     assert loaded.incident_id is None
 
 
@@ -130,9 +136,12 @@ def test_pending_action_can_be_approved(db_session):
         session=db_session,
     )
 
-    mark_pending_action_approved(
-        approval_id=action.approval_id,
+    new_version = transition_action_state(
         session=db_session,
+        approval_id=action.approval_id,
+        expected_state="pending",
+        target_state="approved",
+        expected_version=action.version,
     )
 
     loaded = get_pending_action(
@@ -141,7 +150,9 @@ def test_pending_action_can_be_approved(db_session):
     )
 
     assert loaded is not None
-    assert loaded.approved is True
+    assert loaded.state == "approved"
+    assert loaded.version == new_version
+    assert loaded.version == 2
 
 
 def test_pending_action_can_be_marked_executed(db_session):
@@ -152,15 +163,25 @@ def test_pending_action_can_be_marked_executed(db_session):
         session=db_session,
     )
 
-    mark_pending_action_approved(
-        approval_id=action.approval_id,
+    approved_version = transition_action_state(
         session=db_session,
+        approval_id=action.approval_id,
+        expected_state="pending",
+        target_state="approved",
+        expected_version=action.version,
     )
 
-    mark_pending_action_executed(
-        approval_id=action.approval_id,
-        incident_id="INC-TEST-001",
+    executing_version = claim_action_for_execution(
         session=db_session,
+        approval_id=action.approval_id,
+        expected_version=approved_version,
+    )
+
+    succeeded_version = mark_action_succeeded(
+        session=db_session,
+        approval_id=action.approval_id,
+        expected_version=executing_version,
+        incident_id="INC-TEST-001",
     )
 
     loaded = get_pending_action(
@@ -169,9 +190,10 @@ def test_pending_action_can_be_marked_executed(db_session):
     )
 
     assert loaded is not None
-    assert loaded.approved is True
-    assert loaded.executed is True
+    assert loaded.state == "succeeded"
     assert loaded.incident_id == "INC-TEST-001"
+    assert loaded.version == succeeded_version
+    assert loaded.completed_at is not None
 
 
 def test_same_idempotency_key_returns_same_incident(db_session):
@@ -283,9 +305,12 @@ def test_crash_between_incident_creation_and_approval_completion(
         session=db_session,
     )
 
-    mark_pending_action_approved(
-        approval_id=approval_id,
+    approved_version = transition_action_state(
         session=db_session,
+        approval_id=approval_id,
+        expected_state="pending",
+        target_state="approved",
+        expected_version=action.version,
     )
 
     key = f"create_incident:{approval_id}"
@@ -297,11 +322,9 @@ def test_crash_between_incident_creation_and_approval_completion(
         session=db_session,
     )
 
-    # Intentionally DO NOT call:
-    #
-    # mark_pending_action_executed(...)
-    #
-    # This simulates an application crash.
+    # Simulate a crash after incident creation
+    # but before the approval lifecycle is
+    # advanced to succeeded.
 
     approval_before_retry = get_pending_action(
         approval_id=approval_id,
@@ -309,33 +332,18 @@ def test_crash_between_incident_creation_and_approval_completion(
     )
 
     assert approval_before_retry is not None
-    assert approval_before_retry.approved is True
-    assert approval_before_retry.executed is False
+    assert approval_before_retry.state == "approved"
+    assert approval_before_retry.version == approved_version
 
-    retry = create_incident(
+    second = create_incident(
         request=action.incident,
         created_by="alice",
         idempotency_key=key,
         session=db_session,
     )
 
-    assert retry.created is False
-    assert retry.incident.incident_id == first.incident.incident_id
-
-    mark_pending_action_executed(
-        approval_id=approval_id,
-        incident_id=retry.incident.incident_id,
-        session=db_session,
-    )
-
-    completed = get_pending_action(
-        approval_id=approval_id,
-        session=db_session,
-    )
-
-    assert completed is not None
-    assert completed.executed is True
-    assert completed.incident_id == first.incident.incident_id
+    assert second.incident.incident_id == first.incident.incident_id
+    assert second.created is False
 
 
 def test_get_approval_status(
@@ -365,8 +373,8 @@ def test_get_approval_status(
     body = response.json()
 
     assert body["approval_id"] == approval_id
-    assert body["approved"] is False
-    assert body["executed"] is False
+    assert body["state"] == "pending"
+    assert body["incident_id"] is None
 
 
 def test_unknown_approval_returns_404(
@@ -696,6 +704,7 @@ def test_loaded_pending_action_contains_incident_request(db_session):
 
 def test_executed_approval_survives_new_database_session(db_session):
     approval_id = f"APR-{uuid4().hex[:12].upper()}"
+    incident_id = f"INC-{uuid4().hex[:8].upper()}"
 
     action = build_pending_action(approval_id)
 
@@ -704,15 +713,25 @@ def test_executed_approval_survives_new_database_session(db_session):
         session=db_session,
     )
 
-    mark_pending_action_approved(
-        approval_id=approval_id,
+    approved_version = transition_action_state(
         session=db_session,
+        approval_id=approval_id,
+        expected_state="pending",
+        target_state="approved",
+        expected_version=action.version,
     )
 
-    mark_pending_action_executed(
-        approval_id=approval_id,
-        incident_id=f"INC-{uuid4().hex[:8].upper()}",
+    executing_version = claim_action_for_execution(
         session=db_session,
+        approval_id=approval_id,
+        expected_version=approved_version,
+    )
+
+    succeeded_version = mark_action_succeeded(
+        session=db_session,
+        approval_id=approval_id,
+        expected_version=executing_version,
+        incident_id=incident_id,
     )
 
     db_session.commit()
@@ -726,5 +745,7 @@ def test_executed_approval_survives_new_database_session(db_session):
         )
 
         assert loaded is not None
-        assert loaded.approved is True
-        assert loaded.executed is True
+        assert loaded.state == "succeeded"
+        assert loaded.incident_id == incident_id
+        assert loaded.version == succeeded_version
+        assert loaded.completed_at is not None

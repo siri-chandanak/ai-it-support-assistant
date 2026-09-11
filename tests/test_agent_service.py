@@ -454,8 +454,8 @@ def test_it_support_can_propose_incident_without_executing_write(
     )
 
     assert pending is not None
-    assert pending.approved is False
-    assert pending.executed is False
+    assert pending.state == "pending"
+    assert pending.state == "pending"
 
 
 @patch("ai_it_support_assistant.services.agent_service.get_live_service_status")
