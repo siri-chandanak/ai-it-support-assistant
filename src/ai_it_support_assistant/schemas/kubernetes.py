@@ -23,6 +23,10 @@ class DeploymentState(BaseModel):
     available_replicas: int
     updated_replicas: int
 
+    generation: int = 0
+    observed_generation: int = 0
+    progress_deadline_exceeded: bool = False
+
 
 class PodState(BaseModel):
     resource_type: Literal["pod"] = "pod"
@@ -88,3 +92,39 @@ class DeploymentRestartActionPayload(BaseModel):
         value: str,
     ) -> str:
         return validate_kubernetes_name(value)
+
+
+class DeploymentRolloutResult(BaseModel):
+    deployment_name: str
+    namespace: str
+
+    outcome: Literal[
+        "healthy",
+        "timeout",
+        "failed",
+    ]
+
+    desired_replicas: int
+    updated_replicas: int
+    ready_replicas: int
+    available_replicas: int
+
+    message: str
+
+
+class DeploymentRestartExecutionResult(BaseModel):
+    name: str
+    namespace: str
+
+    restart_applied: bool
+
+    rollout_outcome: Literal[
+        "healthy",
+        "timeout",
+        "failed",
+    ]
+
+    desired_replicas: int
+    updated_replicas: int
+    ready_replicas: int
+    available_replicas: int

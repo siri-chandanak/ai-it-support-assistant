@@ -265,6 +265,7 @@ def mark_action_succeeded(
     approval_id: str,
     expected_version: int,
     resource_id: str,
+    result_json: str | None = None,
 ) -> int:
     """
     Transition:
@@ -287,6 +288,7 @@ def mark_action_succeeded(
     values: dict[str, object] = {
         "state": "succeeded",
         "resource_id": resource_id,
+        "result_json": result_json,
         "completed_at": now,
         "failure_reason": None,
         "version": expected_version + 1,
@@ -323,6 +325,7 @@ def mark_action_failed(
     approval_id: str,
     expected_version: int,
     failure_reason: str,
+    result_json: str | None = None,
 ) -> int:
     """
     Transition:
@@ -340,6 +343,7 @@ def mark_action_failed(
         .values(
             state="failed",
             failure_reason=failure_reason,
+            result_json=result_json,
             completed_at=now,
             version=expected_version + 1,
         )

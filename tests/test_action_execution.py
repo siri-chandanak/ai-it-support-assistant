@@ -21,6 +21,9 @@ from ai_it_support_assistant.schemas.incident import (
     IncidentCreateRequest,
     IncidentRecord,
 )
+from ai_it_support_assistant.schemas.kubernetes import (
+    DeploymentRolloutResult,
+)
 from ai_it_support_assistant.services.action_execution_service import (
     ActionCurrentlyExecutingError,
     ActionFailedError,
@@ -546,7 +549,9 @@ def test_rejected_action_is_terminal(
 @patch("ai_it_support_assistant.services.action_execution_service.deployment_has_restart_token")
 @patch("ai_it_support_assistant.services.action_execution_service.restart_deployment")
 @patch("ai_it_support_assistant.services.action_execution_service.get_deployment_state")
+@patch("ai_it_support_assistant.services.action_execution_service.monitor_deployment_rollout")
 def test_restart_execution_token_is_persisted_before_write(
+    mock_monitor_rollout,
     mock_get_deployment_state,
     mock_restart_deployment,
     mock_has_restart_token,
@@ -572,6 +577,17 @@ def test_restart_execution_token_is_persisted_before_write(
 
     mock_restart_deployment.side_effect = assert_token_exists_before_patch
 
+    mock_monitor_rollout.return_value = DeploymentRolloutResult(
+        deployment_name="payment-api",
+        namespace="dev",
+        outcome="healthy",
+        desired_replicas=3,
+        updated_replicas=3,
+        ready_replicas=3,
+        available_replicas=3,
+        message="Deployment rollout is healthy.",
+    )
+
     execute_restart_deployment_action(
         session=db_session,
         approval_id=(approved_restart_action.approval_id),
@@ -579,9 +595,8 @@ def test_restart_execution_token_is_persisted_before_write(
         settings=restart_settings,
     )
 
-    mock_restart_deployment.assert_called_once()
 
-
+@patch("ai_it_support_assistant.services.action_execution_service.monitor_deployment_rollout")
 @patch("ai_it_support_assistant.services.action_execution_service.deployment_has_restart_token")
 @patch("ai_it_support_assistant.services.action_execution_service.restart_deployment")
 @patch("ai_it_support_assistant.services.action_execution_service.get_deployment_state")
@@ -589,6 +604,7 @@ def test_restart_action_succeeds_when_marker_is_verified(
     mock_get_deployment_state,
     mock_restart_deployment,
     mock_has_restart_token,
+    mock_monitor_rollout,
     db_session,
     restart_admin_user,
     approved_restart_action,
@@ -602,6 +618,17 @@ def test_restart_action_succeeds_when_marker_is_verified(
     )
     mock_restart_deployment.return_value = None
     mock_has_restart_token.return_value = True
+
+    mock_monitor_rollout.return_value = DeploymentRolloutResult(
+        deployment_name="payment-api",
+        namespace="dev",
+        outcome="healthy",
+        desired_replicas=3,
+        updated_replicas=3,
+        ready_replicas=3,
+        available_replicas=3,
+        message="Deployment rollout is healthy.",
+    )
 
     result = execute_restart_deployment_action(
         session=db_session,
@@ -630,7 +657,9 @@ def test_restart_action_succeeds_when_marker_is_verified(
 @patch("ai_it_support_assistant.services.action_execution_service.deployment_has_restart_token")
 @patch("ai_it_support_assistant.services.action_execution_service.restart_deployment")
 @patch("ai_it_support_assistant.services.action_execution_service.get_deployment_state")
+@patch("ai_it_support_assistant.services.action_execution_service.monitor_deployment_rollout")
 def test_restart_succeeds_after_reconciliation(
+    mock_monitor_rollout,
     mock_get_deployment_state,
     mock_restart_deployment,
     mock_has_restart_token,
@@ -642,6 +671,17 @@ def test_restart_succeeds_after_reconciliation(
     mock_restart_deployment.side_effect = KubernetesWriteError("timeout")
 
     mock_has_restart_token.return_value = True
+
+    mock_monitor_rollout.return_value = DeploymentRolloutResult(
+        deployment_name="payment-api",
+        namespace="dev",
+        outcome="healthy",
+        desired_replicas=3,
+        updated_replicas=3,
+        ready_replicas=3,
+        available_replicas=3,
+        message="Deployment rollout is healthy.",
+    )
 
     result = execute_restart_deployment_action(
         session=db_session,

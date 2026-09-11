@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     kubernetes_restart_allowed_namespaces: str = "dev,development"
     kubernetes_restart_allowed_deployments: str = ""
 
+    kubernetes_rollout_timeout_seconds: int = 120
+    kubernetes_rollout_poll_interval_seconds: int = 5
+    kubernetes_rollout_max_read_failures: int = 3
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

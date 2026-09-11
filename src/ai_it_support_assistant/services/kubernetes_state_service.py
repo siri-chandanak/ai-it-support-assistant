@@ -51,6 +51,20 @@ def get_deployment_state(
 
     status = deployment.status
 
+    generation = deployment.metadata.generation or 0
+    observed_generation = status.observed_generation or 0
+
+    conditions = status.conditions or []
+
+    progress_deadline_exceeded = any(
+        (
+            condition.type == "Progressing"
+            and condition.status == "False"
+            and condition.reason == "ProgressDeadlineExceeded"
+        )
+        for condition in conditions
+    )
+
     return DeploymentState(
         name=name,
         namespace=namespace,
@@ -58,6 +72,9 @@ def get_deployment_state(
         ready_replicas=(status.ready_replicas or 0),
         available_replicas=(status.available_replicas or 0),
         updated_replicas=(status.updated_replicas or 0),
+        generation=generation,
+        observed_generation=observed_generation,
+        progress_deadline_exceeded=progress_deadline_exceeded,
     )
 
 
@@ -128,3 +145,21 @@ def get_kubernetes_resource_state(
         )
 
     raise KubernetesStateError("Unsupported Kubernetes resource type.")
+
+
+def is_deployment_rollout_healthy(
+    state: DeploymentState,
+) -> bool:
+    desired = state.desired_replicas
+
+    if desired <= 0:
+        return False
+
+    return all(
+        [
+            state.observed_generation >= state.generation,
+            state.updated_replicas == desired,
+            state.ready_replicas == desired,
+            state.available_replicas == desired,
+        ]
+    )

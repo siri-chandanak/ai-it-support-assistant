@@ -72,6 +72,11 @@ def ask_agent(
             kubernetes_config_mode=(settings.kubernetes_config_mode),
             kubernetes_context=(settings.kubernetes_context),
             kubernetes_default_namespace=(settings.kubernetes_default_namespace),
+            kubernetes_write_enabled=settings.kubernetes_write_enabled,
+            kubernetes_restart_allowed_namespaces=(settings.kubernetes_restart_allowed_namespaces),
+            kubernetes_restart_allowed_deployments=(
+                settings.kubernetes_restart_allowed_deployments
+            ),
             embedding_cache_enabled=(settings.embedding_cache_enabled),
             retrieval_cache_enabled=(settings.retrieval_cache_enabled),
         )

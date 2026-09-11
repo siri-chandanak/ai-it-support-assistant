@@ -44,6 +44,8 @@ class PendingAction(BaseModel):
 
     execution_token: str | None = None
 
+    result_json: str | None = None
+
     failure_reason: str | None = None
 
     version: int = 1
@@ -79,6 +81,8 @@ class ApprovalStatusResponse(BaseModel):
     execution_token: str | None = None
 
     failure_reason: str | None = None
+
+    result: dict[str, object] | None = None
 
 
 class IncidentActionPayload(IncidentCreateRequest):
