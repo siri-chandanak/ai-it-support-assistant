@@ -1,7 +1,9 @@
 import pytest
 
 from ai_it_support_assistant.repositories.approval_repository import (
+    claim_action_for_execution,
     get_pending_action,
+    mark_action_succeeded,
 )
 from ai_it_support_assistant.repositories.incident_repository import (
     get_incident,
@@ -9,12 +11,13 @@ from ai_it_support_assistant.repositories.incident_repository import (
 from ai_it_support_assistant.schemas.incident import (
     IncidentCreateRequest,
 )
+from ai_it_support_assistant.services.action_state_service import (
+    InvalidActionTransitionError,
+)
 from ai_it_support_assistant.services.approval_service import (
-    ApprovalAlreadyExecutedError,
     ApprovalOwnershipError,
     approve_pending_action,
     create_pending_incident_action,
-    mark_action_executed,
 )
 
 
@@ -35,8 +38,7 @@ def test_pending_action_is_not_approved_or_executed(
     db_session.commit()
 
     assert action.approval_id.startswith("APR-")
-    assert action.approved is False
-    assert action.executed is False
+    assert action.state == "pending"
 
     persisted = get_pending_action(
         session=db_session,
@@ -46,8 +48,7 @@ def test_pending_action_is_not_approved_or_executed(
     assert persisted is not None
     assert persisted.approval_id == action.approval_id
     assert persisted.requested_by == "support"
-    assert persisted.approved is False
-    assert persisted.executed is False
+    assert persisted.state == "pending"
     assert persisted.incident_id is None
 
 
@@ -97,7 +98,7 @@ def test_approval_is_persisted(
 
     db_session.commit()
 
-    assert approved.approved is True
+    assert approved.state == "approved"
 
     persisted = get_pending_action(
         session=db_session,
@@ -105,8 +106,7 @@ def test_approval_is_persisted(
     )
 
     assert persisted is not None
-    assert persisted.approved is True
-    assert persisted.executed is False
+    assert persisted.state == "approved"
     assert persisted.incident_id is None
 
 
@@ -118,7 +118,7 @@ def test_executed_action_cannot_be_approved_again(
         requested_by="alice",
         incident=IncidentCreateRequest(
             title="VPN gateway degradation",
-            description=("Authentication latency is elevated."),
+            description="Authentication latency is elevated.",
             severity="high",
         ),
     )
@@ -131,32 +131,35 @@ def test_executed_action_cannot_be_approved_again(
         approved_by="alice",
     )
 
-    executed = mark_action_executed(
+    db_session.commit()
+
+    executing_version = claim_action_for_execution(
         session=db_session,
-        action=approved,
+        approval_id=approved.approval_id,
+        expected_version=approved.version,
+    )
+
+    mark_action_succeeded(
+        session=db_session,
+        approval_id=approved.approval_id,
+        expected_version=executing_version,
         incident_id="INC-TEST-001",
     )
 
     db_session.commit()
 
-    assert executed.executed is True
-    assert executed.incident_id == "INC-TEST-001"
-
-    db_session.expire_all()
-
-    persisted = get_pending_action(
+    succeeded = get_pending_action(
         session=db_session,
-        approval_id=action.approval_id,
+        approval_id=approved.approval_id,
     )
 
-    assert persisted is not None
-    assert persisted.executed is True
-    assert persisted.incident_id == "INC-TEST-001"
+    assert succeeded is not None
+    assert succeeded.state == "succeeded"
 
-    with pytest.raises(ApprovalAlreadyExecutedError):
+    with pytest.raises(InvalidActionTransitionError):
         approve_pending_action(
             session=db_session,
-            approval_id=action.approval_id,
+            approval_id=approved.approval_id,
             approved_by="alice",
         )
 
@@ -245,8 +248,7 @@ def test_executed_approval_records_incident_id(
     )
 
     assert persisted is not None
-    assert persisted.approved is True
-    assert persisted.executed is True
+    assert persisted.state == "succeeded"
     assert persisted.incident_id == incident_id
 
 
@@ -288,9 +290,11 @@ def test_same_approval_cannot_create_duplicate_incident(
         },
     )
 
-    # Your current API design blocks already-executed
-    # approvals instead of silently executing again.
-    assert second_response.status_code == 409
+    assert second_response.status_code == 200
+
+    second_incident_id = second_response.json()["incident_id"]
+
+    assert second_incident_id == first_incident_id
 
     db_session.expire_all()
 
@@ -300,7 +304,7 @@ def test_same_approval_cannot_create_duplicate_incident(
     )
 
     assert persisted is not None
-    assert persisted.executed is True
+    assert persisted.state == "succeeded"
     assert persisted.incident_id == first_incident_id
 
 

@@ -4,15 +4,18 @@ from sqlalchemy.orm import Session
 
 from ai_it_support_assistant.repositories.approval_repository import (
     get_pending_action,
-    mark_pending_action_approved,
     mark_pending_action_executed,
     save_pending_action,
+    transition_action_state,
 )
 from ai_it_support_assistant.schemas.approval import (
     PendingIncidentAction,
 )
 from ai_it_support_assistant.schemas.incident import (
     IncidentCreateRequest,
+)
+from ai_it_support_assistant.services.action_state_service import (
+    validate_action_transition,
 )
 
 
@@ -69,19 +72,28 @@ def approve_pending_action(
     if action.requested_by != approved_by:
         raise ApprovalOwnershipError("Approval belongs to another user.")
 
-    if action.executed:
-        raise ApprovalAlreadyExecutedError("Action was already executed.")
+    validate_action_transition(
+        current_state=action.state,
+        target_state="approved",
+    )
 
-    mark_pending_action_approved(
+    transition_action_state(
+        session=session,
+        approval_id=approval_id,
+        expected_state="pending",
+        target_state="approved",
+        expected_version=action.version,
+    )
+
+    updated_action = get_pending_action(
         session=session,
         approval_id=approval_id,
     )
 
-    return action.model_copy(
-        update={
-            "approved": True,
-        }
-    )
+    if updated_action is None:
+        raise ApprovalNotFoundError("Approval request disappeared after update.")
+
+    return updated_action
 
 
 def mark_action_executed(
@@ -108,3 +120,45 @@ def mark_action_executed(
             "incident_id": incident_id,
         }
     )
+
+
+def reject_pending_action(
+    *,
+    session: Session,
+    approval_id: str,
+    rejected_by: str,
+) -> PendingIncidentAction:
+    action = get_pending_action(
+        session=session,
+        approval_id=approval_id,
+    )
+
+    if action is None:
+        raise ApprovalNotFoundError(f"Approval not found: {approval_id}")
+
+    if action.requested_by != rejected_by:
+        raise ApprovalOwnershipError("Only the user who requested the action can reject it.")
+
+    validate_action_transition(
+        current_state=action.state,
+        target_state="rejected",
+    )
+
+    transition_action_state(
+        session=session,
+        approval_id=approval_id,
+        expected_state="pending",
+        target_state="rejected",
+        expected_version=action.version,
+    )
+    session.flush()
+
+    updated_action = get_pending_action(
+        session=session,
+        approval_id=approval_id,
+    )
+
+    if updated_action is None:
+        raise ApprovalNotFoundError(f"Approval disappeared after rejection: {approval_id}")
+
+    return updated_action

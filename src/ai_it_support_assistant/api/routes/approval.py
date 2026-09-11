@@ -25,21 +25,19 @@ from ai_it_support_assistant.schemas.auth import User
 from ai_it_support_assistant.schemas.incident import (
     IncidentRecord,
 )
+from ai_it_support_assistant.services.action_execution_service import (
+    ActionCurrentlyExecutingError,
+    ActionFailedError,
+    ActionNotApprovedError,
+    ActionRejectedError,
+    IncidentExecutionError,
+    execute_incident_action,
+)
 from ai_it_support_assistant.services.approval_service import (
-    ApprovalAlreadyExecutedError,
     ApprovalNotFoundError,
     ApprovalOwnershipError,
     approve_pending_action,
-    mark_action_executed,
-)
-from ai_it_support_assistant.services.audit_service import (
-    record_audit_event,
-)
-from ai_it_support_assistant.services.incident_service import (
-    create_incident,
-)
-from ai_it_support_assistant.services.tool_authorization_service import (
-    authorize_tool,
+    reject_pending_action,
 )
 
 router = APIRouter()
@@ -47,7 +45,7 @@ router = APIRouter()
 
 @router.post(
     "/approvals/execute",
-    response_model=IncidentRecord,
+    response_model=IncidentRecord | ApprovalStatusResponse,
 )
 def execute_approved_action(
     request: ApprovalExecuteRequest,
@@ -59,98 +57,79 @@ def execute_approved_action(
         Session,
         Depends(get_db),
     ],
-) -> IncidentRecord:
-    if not request.approve:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Approval was not granted.",
-        )
-
+) -> IncidentRecord | ApprovalStatusResponse:
     try:
-        action = approve_pending_action(
+        if not request.approve:
+            rejected_action = reject_pending_action(
+                session=session,
+                approval_id=request.approval_id,
+                rejected_by=current_user.username,
+            )
+
+            return ApprovalStatusResponse(
+                approval_id=rejected_action.approval_id,
+                action=rejected_action.action,
+                state=rejected_action.state,
+                incident_id=rejected_action.incident_id,
+                failure_reason=rejected_action.failure_reason,
+            )
+
+        action = get_pending_action(
             session=session,
             approval_id=request.approval_id,
-            approved_by=current_user.username,
         )
 
-        record_audit_event(
+        if action is None:
+            raise ApprovalNotFoundError("Approval request was not found.")
+
+        if action.state == "succeeded":
+            return execute_incident_action(
+                session=session,
+                approval_id=request.approval_id,
+                current_user=current_user,
+            )
+
+        if action.state == "pending":
+            approve_pending_action(
+                session=session,
+                approval_id=request.approval_id,
+                approved_by=current_user.username,
+            )
+
+        return execute_incident_action(
             session=session,
-            event_type="ACTION_APPROVED",
-            actor=current_user.username,
-            action_type="create_incident",
-            approval_id=action.approval_id,
+            approval_id=request.approval_id,
+            current_user=current_user,
         )
-
-        authorize_tool(
-            tool_name="create_incident",
-            user=current_user,
-        )
-
-        record_audit_event(
-            session=session,
-            event_type="ACTION_EXECUTION_STARTED",
-            actor=current_user.username,
-            action_type="create_incident",
-            approval_id=action.approval_id,
-        )
-
-        idempotency_key = f"create_incident:{action.approval_id}"
-
-        result = create_incident(
-            session=session,
-            request=action.incident,
-            created_by=current_user.username,
-            idempotency_key=idempotency_key,
-        )
-
-        mark_action_executed(
-            session=session,
-            action=action,
-            incident_id=result.incident.incident_id,
-        )
-
-        event_type = "ACTION_EXECUTED" if result.created else "ACTION_EXECUTION_REUSED"
-
-        record_audit_event(
-            session=session,
-            event_type=event_type,
-            actor=current_user.username,
-            action_type="create_incident",
-            approval_id=action.approval_id,
-            resource_id=result.incident.incident_id,
-        )
-
-        session.commit()
-
-        return result.incident
 
     except ApprovalNotFoundError as exc:
-        session.rollback()
-
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Approval request was not found.",
         ) from exc
 
     except ApprovalOwnershipError as exc:
-        session.rollback()
-
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You cannot approve this action.",
+            detail="You cannot approve or execute this action.",
         ) from exc
 
-    except ApprovalAlreadyExecutedError as exc:
-        session.rollback()
-
+    except (
+        ActionNotApprovedError,
+        ActionRejectedError,
+        ActionCurrentlyExecutingError,
+        ActionFailedError,
+    ) as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Action was already executed.",
+            detail=str(exc),
         ) from exc
 
-    except Exception:
-        session.rollback()
-        raise
+    except IncidentExecutionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get(
@@ -187,8 +166,8 @@ def get_approval_status(
 
     return ApprovalStatusResponse(
         approval_id=action.approval_id,
-        action="create_incident",
-        approved=action.approved,
-        executed=action.executed,
+        action=action.action,
+        state=action.state,
         incident_id=action.incident_id,
+        failure_reason=action.failure_reason,
     )
