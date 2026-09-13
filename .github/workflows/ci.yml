@@ -16,8 +16,7 @@ jobs:
 
     env:
       TEST_DATABASE_URL: postgresql+psycopg://ai_support:ai_support_test_password@localhost:5432/ai_support_test
-      DATABASE_URL: postgresql+psycopg://ai_support:ai_support_local_password@localhost:5432/ai_support_test
-
+      DATABASE_URL: postgresql+psycopg://ai_support:ai_support_test_password@localhost:5432/ai_support_test
     services:
       postgres:
         image: postgres:17
