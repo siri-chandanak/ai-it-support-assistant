@@ -425,7 +425,6 @@ def execute_claimed_action(
     )
 
     if action.action == "create_incident":
-
         execute_incident_action_service(
             session=session,
             approval_id=action.approval_id,
