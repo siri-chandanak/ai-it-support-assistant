@@ -17,16 +17,27 @@ from ai_it_support_assistant.models.user import UserModel  # noqa: F401
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-settings = get_settings()
+
+configured_url = config.get_main_option("sqlalchemy.url")
+
+if configured_url:
+    database_url = configured_url
+else:
+    database_url = get_settings().database_url
+
+database_url = database_url.replace("%", "%%")
 
 config.set_main_option(
     "sqlalchemy.url",
-    settings.database_url,
+    database_url,
 )
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
+    fileConfig(
+        config.config_file_name,
+        disable_existing_loggers=False,
+    )
 
 # add your model's MetaData object here
 # for 'autogenerate' support
