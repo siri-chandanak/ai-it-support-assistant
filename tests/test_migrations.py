@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, inspect, text
 
 
 def test_alembic_upgrade_creates_expected_tables() -> None:
-    database_url = os.environ["TEST_DATABASE_URL"]
+    database_url = os.environ["DATABASE_URL"]
 
     engine = create_engine(
         database_url,
@@ -20,6 +20,7 @@ def test_alembic_upgrade_creates_expected_tables() -> None:
     engine.dispose()
 
     config = Config("alembic.ini")
+    config.attributes["configure_logger"] = False
     config.set_main_option(
         "sqlalchemy.url",
         database_url.replace("%", "%%"),
