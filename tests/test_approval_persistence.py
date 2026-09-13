@@ -184,6 +184,7 @@ def test_pending_action_can_be_marked_executed(db_session):
         session=db_session,
         approval_id=action.approval_id,
         expected_version=approved_version,
+        worker_id="worker-test",
     )
 
     succeeded_version = mark_action_succeeded(
@@ -742,6 +743,7 @@ def test_executed_approval_survives_new_database_session(db_session):
         session=db_session,
         approval_id=approval_id,
         expected_version=approved_version,
+        worker_id="worker-test",
     )
 
     succeeded_version = mark_action_succeeded(

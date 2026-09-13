@@ -104,6 +104,22 @@ class PendingActionModel(Base):
         nullable=True,
     )
 
+    worker_id: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+    )
+
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    requested_roles_json: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="[]",
+    )
+
     result_json: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,

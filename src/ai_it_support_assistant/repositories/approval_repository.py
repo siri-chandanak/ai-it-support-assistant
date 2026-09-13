@@ -1,6 +1,11 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import update
+from sqlalchemy import (
+    and_,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.orm import Session
 
 from ai_it_support_assistant.models.incident import (
@@ -77,14 +82,20 @@ def get_pending_action(
         approval_id=model.approval_id,
         action=model.action,
         requested_by=model.requested_by,
+        requested_roles_json=(model.requested_roles_json),
         payload_json=model.payload_json,
         state=model.state,
         resource_id=model.resource_id,
         execution_token=model.execution_token,
         failure_reason=model.failure_reason,
+        result_json=model.result_json,
         version=model.version,
-        execution_started_at=model.execution_started_at,
+        created_at=model.created_at,
+        approved_at=model.approved_at,
+        execution_started_at=(model.execution_started_at),
         completed_at=model.completed_at,
+        worker_id=model.worker_id,
+        last_heartbeat_at=model.last_heartbeat_at,
     )
 
 
@@ -223,6 +234,7 @@ def claim_action_for_execution(
     session: Session,
     approval_id: str,
     expected_version: int,
+    worker_id: str,
 ) -> int:
     """
     Atomically claim an approved action.
@@ -244,7 +256,9 @@ def claim_action_for_execution(
         )
         .values(
             state="executing",
+            worker_id=worker_id,
             execution_started_at=now,
+            last_heartbeat_at=now,
             version=expected_version + 1,
         )
     )
@@ -253,6 +267,53 @@ def claim_action_for_execution(
 
     if result.rowcount != 1:
         raise ConcurrentActionUpdateError("Action could not be claimed for execution.")
+
+    session.flush()
+
+    return expected_version + 1
+
+
+def reclaim_stale_action(
+    *,
+    session: Session,
+    approval_id: str,
+    expected_version: int,
+    stale_before: datetime,
+    worker_id: str,
+) -> int:
+    """
+    Atomically transfer ownership of a stale executing action
+    to a new worker.
+
+    State remains "executing".
+    """
+    now = datetime.now(UTC)
+
+    statement = (
+        update(PendingActionModel)
+        .where(
+            PendingActionModel.approval_id == approval_id,
+            PendingActionModel.state == "executing",
+            PendingActionModel.version == expected_version,
+            or_(
+                PendingActionModel.last_heartbeat_at < stale_before,
+                and_(
+                    PendingActionModel.last_heartbeat_at.is_(None),
+                    PendingActionModel.execution_started_at < stale_before,
+                ),
+            ),
+        )
+        .values(
+            worker_id=worker_id,
+            last_heartbeat_at=now,
+            version=expected_version + 1,
+        )
+    )
+
+    result = session.execute(statement)
+
+    if result.rowcount != 1:
+        raise ConcurrentActionUpdateError("Stale action could not be reclaimed.")
 
     session.flush()
 
@@ -400,3 +461,132 @@ def set_action_execution_token(
     session.flush()
 
     return expected_version + 1
+
+
+def list_approved_actions(
+    *,
+    session: Session,
+    limit: int,
+) -> list[PendingAction]:
+    """
+    Return the oldest approved actions that are waiting
+    for a worker to claim them.
+
+    Important:
+    This function only discovers candidate actions.
+
+    It does NOT claim them and does NOT change their state.
+    Actual ownership happens later through the atomic
+    approved -> executing transition.
+    """
+    statement = (
+        select(PendingActionModel)
+        .where(
+            PendingActionModel.state == "approved",
+        )
+        .order_by(
+            PendingActionModel.approved_at.asc(),
+            PendingActionModel.created_at.asc(),
+        )
+        .limit(limit)
+    )
+
+    models = session.scalars(statement).all()
+
+    return [
+        PendingAction(
+            approval_id=model.approval_id,
+            action=model.action,
+            requested_by=model.requested_by,
+            requested_roles_json=model.requested_roles_json,
+            payload_json=model.payload_json,
+            state=model.state,
+            resource_id=model.resource_id,
+            execution_token=model.execution_token,
+            result_json=model.result_json,
+            failure_reason=model.failure_reason,
+            version=model.version,
+            worker_id=model.worker_id,
+            created_at=model.created_at,
+            approved_at=model.approved_at,
+            execution_started_at=model.execution_started_at,
+            last_heartbeat_at=model.last_heartbeat_at,
+            completed_at=model.completed_at,
+        )
+        for model in models
+    ]
+
+
+def list_stale_executing_actions(
+    *,
+    session: Session,
+    stale_before: datetime,
+    limit: int,
+) -> list[PendingAction]:
+    statement = (
+        select(PendingActionModel)
+        .where(
+            PendingActionModel.state == "executing",
+            or_(
+                PendingActionModel.last_heartbeat_at < stale_before,
+                and_(
+                    PendingActionModel.last_heartbeat_at.is_(None),
+                    PendingActionModel.execution_started_at < stale_before,
+                ),
+            ),
+        )
+        .order_by(PendingActionModel.execution_started_at.asc())
+        .limit(limit)
+    )
+
+    models = session.scalars(statement).all()
+
+    return [
+        PendingAction(
+            approval_id=model.approval_id,
+            action=model.action,
+            requested_by=model.requested_by,
+            requested_roles_json=model.requested_roles_json,
+            payload_json=model.payload_json,
+            state=model.state,
+            resource_id=model.resource_id,
+            execution_token=model.execution_token,
+            result_json=model.result_json,
+            failure_reason=model.failure_reason,
+            version=model.version,
+            worker_id=model.worker_id,
+            created_at=model.created_at,
+            approved_at=model.approved_at,
+            execution_started_at=model.execution_started_at,
+            last_heartbeat_at=model.last_heartbeat_at,
+            completed_at=model.completed_at,
+        )
+        for model in models
+    ]
+
+
+def update_action_heartbeat(
+    *,
+    session: Session,
+    approval_id: str,
+    worker_id: str,
+) -> bool:
+    now = datetime.now(UTC)
+
+    statement = (
+        update(PendingActionModel)
+        .where(
+            PendingActionModel.approval_id == approval_id,
+            PendingActionModel.state == "executing",
+            PendingActionModel.worker_id == worker_id,
+        )
+        .values(
+            last_heartbeat_at=now,
+        )
+    )
+
+    result = session.execute(statement)
+
+    session.flush()
+
+    return result.rowcount == 1

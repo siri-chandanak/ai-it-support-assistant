@@ -29,39 +29,36 @@ class PendingAction(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-
     approval_id: str
-
-    action: ActionType
-
+    action: str
     requested_by: str
+    requested_roles_json: str = "[]"
 
     payload_json: str
 
-    state: ActionState = "pending"
+    state: str
+    version: int
 
     resource_id: str | None = None
-
     execution_token: str | None = None
-
-    result_json: str | None = None
-
     failure_reason: str | None = None
 
-    version: int = 1
-
+    created_at: datetime | None = None
+    approved_at: datetime | None = None
     execution_started_at: datetime | None = None
-
     completed_at: datetime | None = None
+
+    worker_id: str | None = None
+    last_heartbeat_at: datetime | None = None
+
+    result_json: str | None = None
 
 
 class ApprovalExecuteRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-
     approval_id: str
-
     approve: bool
 
 
@@ -69,20 +66,17 @@ class ApprovalStatusResponse(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-
     approval_id: str
-
     action: ActionType
-
     state: ActionState
-
     resource_id: str | None = None
-
     execution_token: str | None = None
-
     failure_reason: str | None = None
-
     result: dict[str, object] | None = None
+    created_at: datetime | None = None
+    approved_at: datetime | None = None
+    execution_started_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 class IncidentActionPayload(IncidentCreateRequest):

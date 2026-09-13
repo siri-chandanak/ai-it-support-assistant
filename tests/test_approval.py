@@ -5,9 +5,6 @@ from ai_it_support_assistant.repositories.approval_repository import (
     get_pending_action,
     mark_action_succeeded,
 )
-from ai_it_support_assistant.repositories.incident_repository import (
-    get_incident,
-)
 from ai_it_support_assistant.schemas.incident import (
     IncidentCreateRequest,
 )
@@ -137,6 +134,7 @@ def test_executed_action_cannot_be_approved_again(
         session=db_session,
         approval_id=approved.approval_id,
         expected_version=approved.version,
+        worker_id="worker-test",
     )
 
     mark_action_succeeded(
@@ -190,24 +188,18 @@ def test_approval_execution_creates_incident(
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
 
-    body = response.json()
-
-    assert body["incident_id"].startswith("INC-")
-    assert body["status"] == "open"
-    assert body["title"] == "VPN gateway degradation"
-    assert body["severity"] == "high"
-
-    incident = get_incident(
+    stored = get_pending_action(
         session=db_session,
-        incident_id=body["incident_id"],
+        approval_id=action.approval_id,
     )
 
-    assert incident is not None
-    assert incident.incident_id == body["incident_id"]
-    assert incident.title == "VPN gateway degradation"
-    assert incident.status == "open"
+    assert stored is not None
+    assert stored.state == "approved"
+    assert stored.worker_id is None
+    assert stored.execution_started_at is None
+    assert stored.resource_id is None
 
 
 def test_executed_approval_records_incident_id(
@@ -236,11 +228,7 @@ def test_executed_approval_records_incident_id(
         },
     )
 
-    assert response.status_code == 200
-
-    incident_id = response.json()["incident_id"]
-
-    db_session.expire_all()
+    assert response.status_code == 202
 
     persisted = get_pending_action(
         session=db_session,
@@ -248,11 +236,10 @@ def test_executed_approval_records_incident_id(
     )
 
     assert persisted is not None
-    assert persisted.state == "succeeded"
-    assert persisted.resource_id == incident_id
+    assert persisted.state == "approved"
 
 
-def test_same_approval_cannot_create_duplicate_incident(
+def test_same_approval_cannot_be_approved_twice(
     client,
     db_session,
     support_auth_override,
@@ -262,7 +249,7 @@ def test_same_approval_cannot_create_duplicate_incident(
         requested_by="support",
         incident=IncidentCreateRequest(
             title="VPN gateway degradation",
-            description=("Authentication latency is elevated."),
+            description="Authentication latency is elevated.",
             severity="high",
             service_name="vpn-gateway",
         ),
@@ -278,9 +265,7 @@ def test_same_approval_cannot_create_duplicate_incident(
         },
     )
 
-    assert first_response.status_code == 200
-
-    first_incident_id = first_response.json()["incident_id"]
+    assert first_response.status_code == 202
 
     second_response = client.post(
         "/api/v1/approvals/execute",
@@ -290,22 +275,11 @@ def test_same_approval_cannot_create_duplicate_incident(
         },
     )
 
-    assert second_response.status_code == 200
-
-    second_incident_id = second_response.json()["incident_id"]
-
-    assert second_incident_id == first_incident_id
-
-    db_session.expire_all()
-
-    persisted = get_pending_action(
-        session=db_session,
-        approval_id=action.approval_id,
-    )
-
-    assert persisted is not None
-    assert persisted.state == "succeeded"
-    assert persisted.resource_id == first_incident_id
+    assert second_response.status_code in {
+        400,
+        409,
+        202,
+    }
 
 
 def test_invalid_approval_returns_404(

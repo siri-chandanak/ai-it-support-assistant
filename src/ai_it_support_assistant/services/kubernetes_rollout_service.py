@@ -1,8 +1,12 @@
 import logging
 import time
+from collections.abc import Callable
 
 from ai_it_support_assistant.core.request_context import get_request_id
 from ai_it_support_assistant.schemas.kubernetes import DeploymentRolloutResult
+from ai_it_support_assistant.services.kubernetes_client_service import (
+    get_apps_v1_api,
+)
 from ai_it_support_assistant.services.kubernetes_state_service import (
     KubernetesResourceNotFoundError,
     KubernetesStateError,
@@ -11,6 +15,7 @@ from ai_it_support_assistant.services.kubernetes_state_service import (
 )
 
 logger = logging.getLogger(__name__)
+RESTARTED_AT_ANNOTATION = "kubectl.kubernetes.io/restartedAt"
 
 
 def monitor_deployment_rollout(
@@ -22,6 +27,7 @@ def monitor_deployment_rollout(
     max_read_failures: int,
     config_mode: str,
     context: str,
+    heartbeat_callback: Callable[[], None] | None = None,
 ) -> DeploymentRolloutResult:
     if timeout_seconds <= 0:
         raise ValueError("Rollout timeout must be positive.")
@@ -50,11 +56,15 @@ def monitor_deployment_rollout(
             consecutive_failures = 0
 
         except KubernetesResourceNotFoundError:
+            if heartbeat_callback is not None:
+                heartbeat_callback()
+
             raise
 
         except KubernetesStateError:
             consecutive_failures += 1
-
+            if heartbeat_callback is not None:
+                heartbeat_callback()
             logger.warning(
                 (
                     "deployment_rollout_read_failed "
@@ -95,6 +105,8 @@ def monitor_deployment_rollout(
 
             time.sleep(poll_interval_seconds)
             continue
+        if heartbeat_callback is not None:
+            heartbeat_callback()
 
         logger.info(
             (
@@ -157,3 +169,25 @@ def monitor_deployment_rollout(
             )
 
         time.sleep(poll_interval_seconds)
+
+
+def get_deployment_restart_token(
+    *,
+    name: str,
+    namespace: str,
+    config_mode: str,
+    context: str | None,
+) -> str | None:
+    apps_api = get_apps_v1_api(
+        config_mode=config_mode,
+        context=context,
+    )
+
+    deployment = apps_api.read_namespaced_deployment(
+        name=name,
+        namespace=namespace,
+    )
+
+    annotations = deployment.spec.template.metadata.annotations or {}
+
+    return annotations.get("kubectl.kubernetes.io/restartedAt")
