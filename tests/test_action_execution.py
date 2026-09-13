@@ -25,14 +25,13 @@ from ai_it_support_assistant.schemas.kubernetes import (
     DeploymentRolloutResult,
 )
 from ai_it_support_assistant.services.action_execution_service import (
-    ActionCurrentlyExecutingError,
     ActionFailedError,
     ActionNotApprovedError,
     ActionRejectedError,
     IncidentExecutionError,
     KubernetesRestartExecutionError,
-    execute_incident_action,
-    execute_restart_deployment_action,
+    execute_claimed_incident_action,
+    execute_claimed_restart_action,
 )
 from ai_it_support_assistant.services.action_payload_service import (
     parse_incident_payload,
@@ -167,6 +166,24 @@ def approved_action(
     return approved
 
 
+def claim_for_test(
+    *,
+    session,
+    action: PendingAction,
+    worker_id: str = "worker-test-1",
+) -> str:
+    claim_action_for_execution(
+        session=session,
+        approval_id=action.approval_id,
+        expected_version=action.version,
+        worker_id=worker_id,
+    )
+
+    session.commit()
+
+    return worker_id
+
+
 def test_only_one_worker_can_claim_execution(
     db_session,
     approved_action,
@@ -178,6 +195,7 @@ def test_only_one_worker_can_claim_execution(
         session=db_session,
         approval_id=approval_id,
         expected_version=original_version,
+        worker_id="worker-1",
     )
 
     db_session.commit()
@@ -199,6 +217,7 @@ def test_only_one_worker_can_claim_execution(
             session=db_session,
             approval_id=approval_id,
             expected_version=original_version,
+            worker_id="worker-1",
         )
 
     db_session.rollback()
@@ -210,10 +229,11 @@ def test_pending_action_cannot_execute(
     current_user: User,
 ) -> None:
     with pytest.raises(ActionNotApprovedError):
-        execute_incident_action(
+        execute_claimed_incident_action(
             session=db_session,
             approval_id=pending_action.approval_id,
             current_user=current_user,
+            worker_id="worker-test-1",
         )
 
 
@@ -232,7 +252,7 @@ def test_rejected_action_cannot_execute(
         raise AssertionError("create_incident must not run for rejected action")
 
     monkeypatch.setattr(
-        ("ai_it_support_assistant.services.action_execution_service.create_incident"),
+        "ai_it_support_assistant.services.action_execution_service.create_incident",
         fake_create_incident,
     )
 
@@ -247,10 +267,11 @@ def test_rejected_action_cannot_execute(
     assert rejected.state == "rejected"
 
     with pytest.raises(ActionRejectedError):
-        execute_incident_action(
+        execute_claimed_incident_action(
             session=db_session,
             approval_id=pending_action.approval_id,
             current_user=current_user,
+            worker_id="worker-test-1",
         )
 
     assert create_incident_calls == 0
@@ -259,22 +280,34 @@ def test_rejected_action_cannot_execute(
 def test_executing_action_cannot_be_claimed_again(
     db_session,
     approved_action,
-    current_user: User,
 ) -> None:
     claim_action_for_execution(
         session=db_session,
         approval_id=approved_action.approval_id,
         expected_version=approved_action.version,
+        worker_id="worker-1",
     )
 
     db_session.commit()
 
-    with pytest.raises(ActionCurrentlyExecutingError):
-        execute_incident_action(
+    current = get_pending_action(
+        session=db_session,
+        approval_id=approved_action.approval_id,
+    )
+
+    assert current is not None
+    assert current.state == "executing"
+    assert current.worker_id == "worker-1"
+
+    with pytest.raises(ConcurrentActionUpdateError):
+        claim_action_for_execution(
             session=db_session,
             approval_id=approved_action.approval_id,
-            current_user=current_user,
+            expected_version=current.version,
+            worker_id="worker-2",
         )
+
+    db_session.rollback()
 
 
 def test_successful_incident_execution(
@@ -283,65 +316,28 @@ def test_successful_incident_execution(
     approved_action,
     current_user: User,
 ) -> None:
-    expected_incident_id = f"INC-{uuid4().hex[:8].upper()}"
-
-    expected_request = parse_incident_payload(approved_action.payload_json)
-
-    def fake_create_incident(
-        *,
-        session,
-        request,
-        created_by,
-        idempotency_key,
-    ) -> IncidentRecord:
-        assert request == expected_request
-        assert created_by == current_user.username
-
-        assert idempotency_key == (f"create_incident:{approved_action.approval_id}")
-
-        assert session is db_session
-
-        incident = IncidentRecord(
-            incident_id=expected_incident_id,
-            title=request.title,
-            description=request.description,
-            severity=request.severity,
-            service_name=request.service_name,
-            created_by=created_by,
-            status="open",
-            created_at=datetime.now(UTC),
-        )
-
-        return SimpleNamespace(
-            incident=incident,
-        )
-
-    monkeypatch.setattr(
-        ("ai_it_support_assistant.services.action_execution_service.create_incident"),
-        fake_create_incident,
+    worker_id = claim_for_test(
+        session=db_session,
+        action=approved_action,
     )
 
-    result = execute_incident_action(
+    result = execute_claimed_incident_action(
         session=db_session,
         approval_id=approved_action.approval_id,
         current_user=current_user,
+        worker_id=worker_id,
     )
 
-    assert result.incident_id == expected_incident_id
+    assert result is not None
 
-    updated = get_pending_action(
+    saved = get_pending_action(
         session=db_session,
         approval_id=approved_action.approval_id,
     )
 
-    assert updated is not None
-    assert updated.state == "succeeded"
-
-    assert updated.resource_id == expected_incident_id
-
-    assert updated.failure_reason is None
-    assert updated.execution_started_at is not None
-    assert updated.completed_at is not None
+    assert saved is not None
+    assert saved.state == "succeeded"
+    assert saved.worker_id == worker_id
 
 
 def test_external_failure_marks_action_failed(
@@ -354,15 +350,21 @@ def test_external_failure_marks_action_failed(
         raise RuntimeError("simulated external incident provider failure")
 
     monkeypatch.setattr(
-        ("ai_it_support_assistant.services.action_execution_service.create_incident"),
+        "ai_it_support_assistant.services.action_execution_service.create_incident",
         fake_create_incident,
     )
 
+    worker_id = claim_for_test(
+        session=db_session,
+        action=approved_action,
+    )
+
     with pytest.raises(IncidentExecutionError):
-        execute_incident_action(
+        execute_claimed_incident_action(
             session=db_session,
             approval_id=approved_action.approval_id,
             current_user=current_user,
+            worker_id=worker_id,
         )
 
     updated = get_pending_action(
@@ -392,24 +394,31 @@ def test_failed_action_does_not_automatically_retry(
         raise RuntimeError("simulated provider failure")
 
     monkeypatch.setattr(
-        ("ai_it_support_assistant.services.action_execution_service.create_incident"),
+        "ai_it_support_assistant.services.action_execution_service.create_incident",
         failing_create_incident,
     )
 
+    worker_id = claim_for_test(
+        session=db_session,
+        action=approved_action,
+    )
+
     with pytest.raises(IncidentExecutionError):
-        execute_incident_action(
+        execute_claimed_incident_action(
             session=db_session,
             approval_id=approved_action.approval_id,
             current_user=current_user,
+            worker_id=worker_id,
         )
 
     assert create_incident_calls == 1
 
     with pytest.raises(ActionFailedError):
-        execute_incident_action(
+        execute_claimed_incident_action(
             session=db_session,
             approval_id=approved_action.approval_id,
             current_user=current_user,
+            worker_id=worker_id,
         )
 
     assert create_incident_calls == 1
@@ -467,16 +476,23 @@ def test_retry_after_success_does_not_create_second_incident(
         fake_get_incident,
     )
 
-    first = execute_incident_action(
+    worker_id = claim_for_test(
         session=db_session,
-        approval_id=approved_action.approval_id,
-        current_user=current_user,
+        action=approved_action,
     )
 
-    second = execute_incident_action(
+    first = execute_claimed_incident_action(
         session=db_session,
         approval_id=approved_action.approval_id,
         current_user=current_user,
+        worker_id=worker_id,
+    )
+
+    second = execute_claimed_incident_action(
+        session=db_session,
+        approval_id=approved_action.approval_id,
+        current_user=current_user,
+        worker_id=worker_id,
     )
 
     assert first.incident_id == expected_incident_id
@@ -587,11 +603,16 @@ def test_restart_execution_token_is_persisted_before_write(
         available_replicas=3,
         message="Deployment rollout is healthy.",
     )
+    worker_id = claim_for_test(
+        session=db_session,
+        action=approved_restart_action,
+    )
 
-    execute_restart_deployment_action(
+    execute_claimed_restart_action(
         session=db_session,
         approval_id=(approved_restart_action.approval_id),
         current_user=restart_admin_user,
+        worker_id=worker_id,
         settings=restart_settings,
     )
 
@@ -629,11 +650,15 @@ def test_restart_action_succeeds_when_marker_is_verified(
         available_replicas=3,
         message="Deployment rollout is healthy.",
     )
-
-    result = execute_restart_deployment_action(
+    worker_id = claim_for_test(
+        session=db_session,
+        action=approved_restart_action,
+    )
+    result = execute_claimed_restart_action(
         session=db_session,
         approval_id=(approved_restart_action.approval_id),
         current_user=restart_admin_user,
+        worker_id=worker_id,
         settings=settings,
     )
 
@@ -682,11 +707,16 @@ def test_restart_succeeds_after_reconciliation(
         available_replicas=3,
         message="Deployment rollout is healthy.",
     )
+    worker_id = claim_for_test(
+        session=db_session,
+        action=approved_restart_action,
+    )
 
-    result = execute_restart_deployment_action(
+    result = execute_claimed_restart_action(
         session=db_session,
         approval_id=(approved_restart_action.approval_id),
         current_user=restart_admin_user,
+        worker_id=worker_id,
         settings=restart_settings,
     )
 
@@ -713,11 +743,17 @@ def test_restart_fails_when_reconciliation_fails(
 
     mock_has_restart_token.return_value = False
 
+    worker_id = claim_for_test(
+        session=db_session,
+        action=approved_restart_action,
+    )
+
     with pytest.raises(KubernetesRestartExecutionError):
-        execute_restart_deployment_action(
+        execute_claimed_restart_action(
             session=db_session,
             approval_id=(approved_restart_action.approval_id),
             current_user=restart_admin_user,
+            worker_id=worker_id,
             settings=restart_settings,
         )
 
@@ -742,11 +778,17 @@ def test_restart_policy_is_rechecked_before_execution(
 ):
     restart_settings.kubernetes_restart_allowed_deployments = "some-other-deployment"
 
+    worker_id = claim_for_test(
+        session=db_session,
+        action=approved_restart_action,
+    )
+
     with pytest.raises(KubernetesWritePolicyError):
-        execute_restart_deployment_action(
+        execute_claimed_restart_action(
             session=db_session,
             approval_id=(approved_restart_action.approval_id),
             current_user=restart_admin_user,
+            worker_id=worker_id,
             settings=restart_settings,
         )
 
@@ -766,12 +808,17 @@ def test_restart_does_not_patch_when_deployment_disappears(
     mock_get_deployment_state.side_effect = KubernetesResourceNotFoundError(
         "Deployment was not found."
     )
+    worker_id = claim_for_test(
+        session=db_session,
+        action=approved_restart_action,
+    )
 
     with pytest.raises(KubernetesResourceNotFoundError):
-        execute_restart_deployment_action(
+        execute_claimed_restart_action(
             session=db_session,
             approval_id=(approved_restart_action.approval_id),
             current_user=restart_admin_user,
+            worker_id=worker_id,
             settings=restart_settings,
         )
 

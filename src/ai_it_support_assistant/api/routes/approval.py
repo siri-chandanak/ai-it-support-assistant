@@ -5,6 +5,7 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Response,
     status,
 )
 from sqlalchemy.orm import Session
@@ -12,7 +13,6 @@ from sqlalchemy.orm import Session
 from ai_it_support_assistant.api.dependencies.auth import (
     get_current_user,
 )
-from ai_it_support_assistant.core.config import get_settings
 from ai_it_support_assistant.db.session import (
     get_db,
 )
@@ -22,20 +22,9 @@ from ai_it_support_assistant.repositories.approval_repository import (
 from ai_it_support_assistant.schemas.approval import (
     ApprovalExecuteRequest,
     ApprovalStatusResponse,
+    PendingAction,
 )
 from ai_it_support_assistant.schemas.auth import User
-from ai_it_support_assistant.schemas.incident import (
-    IncidentRecord,
-)
-from ai_it_support_assistant.services.action_execution_service import (
-    ActionCurrentlyExecutingError,
-    ActionFailedError,
-    ActionNotApprovedError,
-    ActionRejectedError,
-    IncidentExecutionError,
-    execute_incident_action,
-    execute_restart_deployment_action,
-)
 from ai_it_support_assistant.services.approval_service import (
     ApprovalNotFoundError,
     ApprovalOwnershipError,
@@ -48,10 +37,11 @@ router = APIRouter()
 
 @router.post(
     "/approvals/execute",
-    response_model=IncidentRecord | ApprovalStatusResponse,
+    response_model=ApprovalStatusResponse,
 )
 def execute_approved_action(
     request: ApprovalExecuteRequest,
+    response: Response,
     current_user: Annotated[
         User,
         Depends(get_current_user),
@@ -60,27 +50,18 @@ def execute_approved_action(
         Session,
         Depends(get_db),
     ],
-) -> IncidentRecord | ApprovalStatusResponse:
+) -> ApprovalStatusResponse:
+    """
+    Approve or reject a pending action.
+
+    - The API does NOT execute the operational action.
+    - Approving moves the action:
+          pending -> approved
+    - A separate worker later performs:
+          approved -> executing -> succeeded/failed
+    """
+
     try:
-        if not request.approve:
-            rejected_action = reject_pending_action(
-                session=session,
-                approval_id=request.approval_id,
-                rejected_by=current_user.username,
-            )
-
-            return ApprovalStatusResponse(
-                approval_id=rejected_action.approval_id,
-                action=rejected_action.action,
-                state=rejected_action.state,
-                resource_id=rejected_action.resource_id,
-                execution_token=rejected_action.execution_token,
-                failure_reason=rejected_action.failure_reason,
-                result=_parse_action_result(
-                    rejected_action.result_json,
-                ),
-            )
-
         action = get_pending_action(
             session=session,
             approval_id=request.approval_id,
@@ -89,75 +70,99 @@ def execute_approved_action(
         if action is None:
             raise ApprovalNotFoundError("Approval request was not found.")
 
+        # Only the user who requested the action may approve/reject it.
+        if action.requested_by != current_user.username:
+            raise ApprovalOwnershipError("You cannot approve or reject this action.")
+
+        #
+        # Reject path
+        #
+        if not request.approve:
+            if action.state != "pending":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(f"Only pending actions can be rejected. Current state: {action.state}"),
+                )
+
+            rejected_action = reject_pending_action(
+                session=session,
+                approval_id=request.approval_id,
+                rejected_by=current_user.username,
+            )
+
+            session.commit()
+
+            response.status_code = status.HTTP_200_OK
+
+            return _build_status_response(rejected_action)
+
+        #
+        # Approve path
+        #
         if action.state == "pending":
-            action = approve_pending_action(
+            approved_action = approve_pending_action(
                 session=session,
                 approval_id=request.approval_id,
                 approved_by=current_user.username,
             )
 
-        #
-        # Route execution based on action type.
-        #
-        if action.action == "create_incident":
-            return execute_incident_action(
-                session=session,
-                approval_id=request.approval_id,
-                current_user=current_user,
-            )
+            session.commit()
 
-        if action.action == "restart_deployment":
-            executed_action = execute_restart_deployment_action(
-                session=session,
-                approval_id=request.approval_id,
-                current_user=current_user,
-                settings=get_settings(),
-            )
+            #
+            # 202 means:
+            #
+            # The request was accepted,
+            # but execution has NOT completed yet.
+            #
+            response.status_code = status.HTTP_202_ACCEPTED
 
-            return ApprovalStatusResponse(
-                approval_id=executed_action.approval_id,
-                action=executed_action.action,
-                state=executed_action.state,
-                resource_id=executed_action.resource_id,
-                execution_token=executed_action.execution_token,
-                failure_reason=executed_action.failure_reason,
-                result=_parse_action_result(
-                    executed_action.result_json,
-                ),
-            )
+            return _build_status_response(approved_action)
+
+        #
+        # Already approved.
+        #
+        # This is not an error.
+        # The action is still waiting for / being handled
+        # by the worker.
+        #
+        if action.state == "approved":
+            response.status_code = status.HTTP_202_ACCEPTED
+
+            return _build_status_response(action)
+
+        #
+        # The worker may already have started or
+        # completed the action.
+        #
+        if action.state in {
+            "executing",
+            "succeeded",
+            "failed",
+            "rejected",
+        }:
+            response.status_code = status.HTTP_200_OK
+
+            return _build_status_response(action)
 
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported action type: {action.action}",
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(f"Action cannot be processed from state: {action.state}"),
         )
 
     except ApprovalNotFoundError as exc:
+        session.rollback()
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Approval request was not found.",
         ) from exc
 
     except ApprovalOwnershipError as exc:
+        session.rollback()
+
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You cannot approve or execute this action.",
-        ) from exc
-
-    except (
-        ActionNotApprovedError,
-        ActionRejectedError,
-        ActionCurrentlyExecutingError,
-        ActionFailedError,
-    ) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-
-    except IncidentExecutionError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
+            detail=("You cannot approve, reject, or execute this action."),
         ) from exc
 
 
@@ -210,6 +215,20 @@ def get_approval_status(
             detail="Not authorized to view this approval.",
         )
 
+    return _build_status_response(action)
+
+
+def _build_status_response(
+    action: PendingAction,
+) -> ApprovalStatusResponse:
+    """
+    Convert the internal PendingAction domain object
+    into the public API response.
+
+    Keeping this mapping in one place prevents the POST
+    and GET endpoints from drifting apart.
+    """
+
     return ApprovalStatusResponse(
         approval_id=action.approval_id,
         action=action.action,
@@ -220,4 +239,30 @@ def get_approval_status(
         result=_parse_action_result(
             action.result_json,
         ),
+        created_at=action.created_at,
+        approved_at=action.approved_at,
+        execution_started_at=(action.execution_started_at),
+        completed_at=action.completed_at,
     )
+
+
+def _parse_action_result(
+    result_json: str | None,
+) -> dict[str, object] | None:
+    """
+    Safely convert stored JSON text into the dictionary
+    returned by the API.
+    """
+
+    if result_json is None:
+        return None
+
+    try:
+        result = json.loads(result_json)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(result, dict):
+        return None
+
+    return result

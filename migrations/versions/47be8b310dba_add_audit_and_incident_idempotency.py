@@ -101,7 +101,6 @@ def upgrade() -> None:
         ["idempotency_key"],
     )
 
-    # 5. Step 19 pending-action fields
     op.add_column(
         "pending_incident_actions",
         sa.Column(

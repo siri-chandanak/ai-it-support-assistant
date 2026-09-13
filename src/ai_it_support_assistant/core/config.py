@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     kubernetes_rollout_poll_interval_seconds: int = 5
     kubernetes_rollout_max_read_failures: int = 3
 
+    action_worker_enabled: bool = False
+    action_worker_poll_interval_seconds: float = 2.0
+    action_worker_batch_size: int = 5
+    action_worker_stale_after_seconds: int = 300
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

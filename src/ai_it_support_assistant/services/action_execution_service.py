@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from ai_it_support_assistant.core.config import Settings
 from ai_it_support_assistant.repositories.approval_repository import (
     ConcurrentActionUpdateError,
-    claim_action_for_execution,
     get_pending_action,
     mark_action_failed,
     mark_action_succeeded,
@@ -26,9 +25,6 @@ from ai_it_support_assistant.schemas.kubernetes import (
 from ai_it_support_assistant.services.action_payload_service import (
     parse_incident_payload,
     parse_restart_payload,
-)
-from ai_it_support_assistant.services.action_state_service import (
-    validate_action_transition,
 )
 from ai_it_support_assistant.services.approval_service import (
     ensure_execution_token,
@@ -265,11 +261,41 @@ def _validate_action_for_execution(
         raise ActionNotApprovedError(f"Action cannot execute from state: {action.state}")
 
 
-def execute_incident_action(
+def _validate_claimed_action_for_execution(
+    *,
+    action: PendingAction,
+    current_user: User,
+    worker_id: str,
+    execution_error_type: type[Exception],
+) -> None:
+    if action.requested_by != current_user.username:
+        raise ApprovalOwnershipError("You cannot execute another user's approval.")
+
+    if action.state == "pending":
+        raise ActionNotApprovedError("Action has not been approved.")
+
+    if action.state == "rejected":
+        raise ActionRejectedError("Action was rejected.")
+
+    if action.state == "failed":
+        raise ActionFailedError("Action previously failed and cannot be retried automatically.")
+
+    if action.state == "approved":
+        raise execution_error_type("Action must be claimed by a worker before execution.")
+
+    if action.state != "executing":
+        raise execution_error_type(f"Action cannot execute from state: {action.state}")
+
+    if action.worker_id != worker_id:
+        raise execution_error_type("Action is owned by another worker.")
+
+
+def execute_claimed_incident_action(
     *,
     session: Session,
     approval_id: str,
     current_user: User,
+    worker_id: str,
 ) -> IncidentRecord:
     action = get_pending_action(
         session=session,
@@ -282,17 +308,23 @@ def execute_incident_action(
     if action.action != "create_incident":
         raise IncidentExecutionError("Approval is not a create_incident action.")
 
-    incident_request = parse_incident_payload(action.payload_json)
-
     if action.requested_by != current_user.username:
         raise ApprovalOwnershipError("You cannot execute another user's approval.")
 
+    #
+    # Re-authorize using the user's CURRENT roles.
+    #
     authorize_tool(
         tool_name="create_incident",
         user=current_user,
     )
 
+    #
     # Idempotent read-after-success behavior.
+    #
+    # If this action already succeeded, do NOT create
+    # another incident.
+    #
     if action.state == "succeeded":
         if action.resource_id is None:
             raise IncidentExecutionError("Succeeded action is missing resource ID.")
@@ -307,28 +339,21 @@ def execute_incident_action(
 
         return incident
 
-    _validate_action_for_execution(
+    #
+    # The worker must already have claimed this action.
+    #
+    _validate_claimed_action_for_execution(
         action=action,
         current_user=current_user,
+        worker_id=worker_id,
+        execution_error_type=IncidentExecutionError,
     )
 
-    validate_action_transition(
-        current_state=action.state,
-        target_state="executing",
-    )
+    incident_request = parse_incident_payload(action.payload_json)
 
-    try:
-        claim_action_for_execution(
-            session=session,
-            approval_id=approval_id,
-            expected_version=action.version,
-        )
-
-    except ConcurrentActionUpdateError:
-        raise ActionCurrentlyExecutingError(
-            "Another request already claimed this action."
-        ) from None
-
+    #
+    # Record that execution has started.
+    #
     _audit_execution_started(
         session=session,
         approval_id=approval_id,
@@ -336,8 +361,18 @@ def execute_incident_action(
         actor=current_user.username,
     )
 
+    #
+    # Persist audit/state-related work before performing
+    # the external operation.
+    #
     session.commit()
 
+    #
+    # Stable idempotency key.
+    #
+    # If the worker crashes and later reconciles/retries,
+    # the same approval must always use the same key.
+    #
     idempotency_key = f"create_incident:{approval_id}"
 
     try:
@@ -351,6 +386,9 @@ def execute_incident_action(
         incident = execution_result.incident
 
     except Exception:
+        #
+        # External incident creation failed.
+        #
         session.rollback()
 
         current_action = get_pending_action(
@@ -367,8 +405,8 @@ def execute_incident_action(
             mark_action_failed(
                 session=session,
                 approval_id=approval_id,
-                expected_version=(current_action.version),
-                failure_reason=("incident_creation_failed"),
+                expected_version=current_action.version,
+                failure_reason="incident_creation_failed",
             )
 
             _audit_execution_failed(
@@ -380,11 +418,20 @@ def execute_incident_action(
 
             session.commit()
 
+            #
+            # Ensure later reads see the updated state.
+            #
+            session.expire_all()
+
         except ConcurrentActionUpdateError:
             session.rollback()
 
         raise IncidentExecutionError("Incident creation failed.") from None
 
+    #
+    # Ensure anything created by create_incident()
+    # is flushed before finalizing the action.
+    #
     session.flush()
 
     current_action = get_pending_action(
@@ -397,6 +444,9 @@ def execute_incident_action(
 
         raise IncidentExecutionError("Incident was created but approval could not be reloaded.")
 
+    #
+    # Finalize executing -> succeeded.
+    #
     try:
         mark_action_succeeded(
             session=session,
@@ -405,6 +455,12 @@ def execute_incident_action(
             resource_id=incident.incident_id,
         )
 
+        #
+        # Flush the conditional UPDATE before creating
+        # the audit record.
+        #
+        session.flush()
+
     except ConcurrentActionUpdateError as exc:
         session.rollback()
 
@@ -412,6 +468,9 @@ def execute_incident_action(
             "Incident was created but action state could not be finalized."
         ) from exc
 
+    #
+    # Record successful execution.
+    #
     _audit_execution_succeeded(
         session=session,
         approval_id=approval_id,
@@ -420,16 +479,34 @@ def execute_incident_action(
         actor=current_user.username,
     )
 
+    #
+    # Commit both:
+    #   executing -> succeeded
+    #   success audit event
+    #
     session.commit()
+
+    #
+    # Important:
+    #
+    # mark_action_succeeded() uses a conditional UPDATE.
+    # SQLAlchemy may still hold an older ORM instance
+    # showing state="executing" in the identity map.
+    #
+    # Expiring the session forces the next read to load
+    # the current database value.
+    #
+    session.expire_all()
 
     return incident
 
 
-def execute_restart_deployment_action(
+def execute_claimed_restart_action(
     *,
     session: Session,
     approval_id: str,
     current_user: User,
+    worker_id: str,
     settings: Settings,
 ) -> PendingAction:
     action = get_pending_action(
@@ -454,21 +531,26 @@ def execute_restart_deployment_action(
         user=current_user,
     )
 
-    # If already succeeded, do NOT restart again.
+    # Idempotent behavior:
+    # if the action already succeeded, never restart again.
     if action.state == "succeeded":
         return action
 
-    _validate_action_for_execution(
+    #
+    # The worker must already have claimed this action.
+    #
+    _validate_claimed_action_for_execution(
         action=action,
         current_user=current_user,
+        worker_id=worker_id,
+        execution_error_type=(KubernetesRestartExecutionError),
     )
 
     #
-    # IMPORTANT:
-    # Re-check the current resource policy.
+    # Re-check the CURRENT Kubernetes write policy.
     #
-    # An approval created yesterday must not bypass
-    # today's updated allowlist.
+    # Approval does not permanently authorize execution.
+    # The policy may have changed after approval.
     #
     validate_restart_policy(
         namespace=payload.namespace,
@@ -479,12 +561,9 @@ def execute_restart_deployment_action(
     )
 
     #
-    # Re-read the target before claiming execution.
+    # Re-read the target before performing the write.
     #
-    # This is READ ONLY.
-    #
-    # If the Deployment disappeared, no Kubernetes
-    # write should occur.
+    # This is read-only.
     #
     get_deployment_state(
         name=payload.name,
@@ -493,25 +572,11 @@ def execute_restart_deployment_action(
         context=settings.kubernetes_context,
     )
 
-    validate_action_transition(
-        current_state=action.state,
-        target_state="executing",
-    )
-
-    try:
-        claim_action_for_execution(
-            session=session,
-            approval_id=approval_id,
-            expected_version=action.version,
-        )
-
-    except ConcurrentActionUpdateError:
-        raise ActionCurrentlyExecutingError(
-            "Another request already claimed this action."
-        ) from None
-
     resource_id = f"{payload.namespace}/{payload.name}"
 
+    #
+    # Record execution start.
+    #
     _audit_execution_started(
         session=session,
         approval_id=approval_id,
@@ -521,13 +586,13 @@ def execute_restart_deployment_action(
     )
 
     #
-    # Commit the approved -> executing claim.
-    #
-    # This ensures another request cannot claim the
-    # same action while we execute Kubernetes work.
+    # Persist audit information before continuing.
     #
     session.commit()
 
+    #
+    # Reload the action after the transaction boundary.
+    #
     executing_action = get_pending_action(
         session=session,
         approval_id=approval_id,
@@ -537,11 +602,21 @@ def execute_restart_deployment_action(
         raise KubernetesRestartExecutionError("Executing action could not be reloaded.")
 
     #
-    # Generate/persist the restart token BEFORE
+    # The action must still be executing and still belong
+    # to this worker.
+    #
+    if executing_action.state != "executing":
+        raise KubernetesRestartExecutionError("Restart action is no longer executing.")
+
+    if executing_action.worker_id != worker_id:
+        raise KubernetesRestartExecutionError("Worker no longer owns the restart action.")
+
+    #
+    # Generate/persist the restart execution token BEFORE
     # the Kubernetes write.
     #
     # If one already exists, ensure_execution_token()
-    # reuses it.
+    # must reuse it.
     #
     try:
         executing_action = ensure_execution_token(
@@ -554,6 +629,8 @@ def execute_restart_deployment_action(
         #
         # CRITICAL:
         # Commit the token before PATCHing Kubernetes.
+        #
+        # This makes crash recovery safe.
         #
         session.commit()
 
@@ -579,12 +656,16 @@ def execute_restart_deployment_action(
             context=settings.kubernetes_context,
         )
 
+        #
+        # Verify that Kubernetes actually contains the
+        # exact persisted restart token.
+        #
         verified = deployment_has_restart_token(
             name=payload.name,
             namespace=payload.namespace,
-            restart_timestamp=(restart_timestamp),
+            restart_timestamp=restart_timestamp,
             config_mode=(settings.kubernetes_config_mode),
-            context=(settings.kubernetes_context),
+            context=settings.kubernetes_context,
         )
 
         if not verified:
@@ -592,21 +673,18 @@ def execute_restart_deployment_action(
 
     except KubernetesWriteError:
         #
-        # Important:
-        #
-        # A timeout/error does not necessarily mean
+        # A timeout/error does not necessarily mean that
         # Kubernetes failed to apply the patch.
         #
-        # Reconcile against authoritative cluster
-        # state before declaring failure.
+        # Reconcile against authoritative cluster state.
         #
         try:
             verified = deployment_has_restart_token(
                 name=payload.name,
                 namespace=payload.namespace,
-                restart_timestamp=(restart_timestamp),
+                restart_timestamp=restart_timestamp,
                 config_mode=(settings.kubernetes_config_mode),
-                context=(settings.kubernetes_context),
+                context=settings.kubernetes_context,
             )
 
         except KubernetesWriteError:
@@ -639,12 +717,11 @@ def execute_restart_deployment_action(
     #
     # At this point:
     #
-    # restartedAt == persisted execution_token
+    # Kubernetes restartedAt == persisted execution_token
     #
     # This proves the restart REQUEST was applied.
-    # It does NOT yet prove the rollout became healthy.
+    # It does NOT yet prove the rollout is healthy.
     #
-
     _audit_restart_applied(
         session=session,
         approval_id=approval_id,
@@ -664,11 +741,10 @@ def execute_restart_deployment_action(
     )
 
     #
-    # Persist the audit records before polling.
+    # Persist audit records before long polling.
     #
-    # Important:
-    # Do not keep a PostgreSQL transaction open
-    # during potentially long Kubernetes polling.
+    # Do not leave a PostgreSQL transaction open while
+    # monitoring Kubernetes.
     #
     session.commit()
 
@@ -741,7 +817,7 @@ def execute_restart_deployment_action(
             mark_action_succeeded(
                 session=session,
                 approval_id=approval_id,
-                expected_version=current_action.version,
+                expected_version=(current_action.version),
                 resource_id=resource_id,
                 result_json=result_json,
             )
@@ -797,8 +873,7 @@ def execute_restart_deployment_action(
         )
 
     #
-    # Kubernetes explicitly reported rollout failure,
-    # such as ProgressDeadlineExceeded.
+    # Kubernetes explicitly reported rollout failure.
     #
     else:
         _audit_rollout_result(
@@ -814,6 +889,7 @@ def execute_restart_deployment_action(
             ready_replicas=(rollout_result.ready_replicas),
             available_replicas=(rollout_result.available_replicas),
         )
+
         session.commit()
 
         _mark_restart_failed(
@@ -858,14 +934,14 @@ def execute_action(
         raise ValueError(f"Approval not found: {approval_id}")
 
     if action.action == "create_incident":
-        return execute_incident_action(
+        return execute_claimed_incident_action(
             session=session,
             approval_id=approval_id,
             current_user=current_user,
         )
 
     if action.action == "restart_deployment":
-        return execute_restart_deployment_action(
+        return execute_claimed_restart_action(
             session=session,
             approval_id=approval_id,
             current_user=current_user,
