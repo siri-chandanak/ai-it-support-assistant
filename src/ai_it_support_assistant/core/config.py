@@ -65,6 +65,14 @@ class Settings(BaseSettings):
     action_worker_batch_size: int = 5
     action_worker_stale_after_seconds: int = 300
 
+    mcp_enabled: bool = False
+    mcp_host: str = "127.0.0.1"
+    mcp_port: int = 8001
+
+    mcp_issuer_url: str = "http://127.0.0.1:8000"
+
+    mcp_resource_server_url: str = "http://127.0.0.1:8001/mcp"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

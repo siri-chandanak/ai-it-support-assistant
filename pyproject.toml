@@ -12,6 +12,7 @@ dependencies = [
     "cachetools>=7.1.8",
     "fastapi>=0.141.1",
     "kubernetes>=36.0.3",
+    "mcp[cli]>=2.2.0",
     "openai>=3.7.0",
     "psycopg>=3.3.5",
     "pwdlib[argon2]>=0.3.1",
