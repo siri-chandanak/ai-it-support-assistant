@@ -226,3 +226,24 @@ def ensure_execution_token(
         raise ActionExecutionTokenError("Execution token was not persisted.")
 
     return updated_action
+
+
+def get_pending_action_for_user(
+    *,
+    session: Session,
+    approval_id: str,
+    username: str,
+    roles: list[str],
+) -> PendingAction:
+    action = get_pending_action(
+        session=session,
+        approval_id=approval_id,
+    )
+
+    if action is None:
+        raise ApprovalNotFoundError("Approval request was not found.")
+
+    if action.requested_by != username and "admin" not in roles:
+        raise ApprovalOwnershipError("Approval belongs to another user.")
+
+    return action
