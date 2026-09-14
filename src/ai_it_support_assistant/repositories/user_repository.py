@@ -36,3 +36,17 @@ def add_user(
     db.refresh(user)
 
     return user
+
+
+def get_user_by_external_identity(
+    *,
+    session: Session,
+    external_issuer: str,
+    external_subject: str,
+) -> UserModel | None:
+    statement = select(UserModel).where(
+        UserModel.external_issuer == external_issuer,
+        UserModel.external_subject == external_subject,
+    )
+
+    return session.scalar(statement)

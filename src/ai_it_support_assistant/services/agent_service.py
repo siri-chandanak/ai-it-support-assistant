@@ -29,6 +29,9 @@ from ai_it_support_assistant.services.live_status_service import (
 from ai_it_support_assistant.services.rag_service import (
     answer_question,
 )
+from ai_it_support_assistant.services.resource_authorization_service import (
+    require_namespace_permission,
+)
 from ai_it_support_assistant.services.tool_authorization_service import (
     authorize_tool,
 )
@@ -144,6 +147,13 @@ def handle_agent_request(
             raise AgentRoutingError("Missing Kubernetes arguments.")
 
         namespace = decision.kubernetes_namespace or kubernetes_default_namespace
+
+        require_namespace_permission(
+            user=current_user,
+            permission="kubernetes:read",
+            namespace=namespace,
+            session=session,
+        )
 
         logger.info(
             (

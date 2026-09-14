@@ -21,6 +21,9 @@ from ai_it_support_assistant.services.kubernetes_write_policy_service import (
     KubernetesWritePolicyError,
     validate_restart_policy,
 )
+from ai_it_support_assistant.services.resource_authorization_service import (
+    require_namespace_permission,
+)
 from ai_it_support_assistant.services.tool_authorization_service import (
     authorize_tool,
 )
@@ -71,6 +74,13 @@ def prepare_restart_action(
     authorize_tool(
         tool_name="restart_deployment",
         user=current_user,
+    )
+
+    require_namespace_permission(
+        user=current_user,
+        permission="deployment:restart",
+        namespace=namespace,
+        session=session,
     )
 
     validate_restart_policy(

@@ -29,6 +29,9 @@ from ai_it_support_assistant.services.kubernetes_state_service import (
 from ai_it_support_assistant.services.live_status_service import (
     ServiceNotFoundError,
 )
+from ai_it_support_assistant.services.resource_authorization_service import (
+    ResourcePermissionDeniedError,
+)
 from ai_it_support_assistant.services.tool_authorization_service import (
     ToolAuthorizationError,
 )
@@ -81,10 +84,13 @@ def ask_agent(
             retrieval_cache_enabled=(settings.retrieval_cache_enabled),
         )
 
-    except ToolAuthorizationError as exc:
+    except (
+        ToolAuthorizationError,
+        ResourcePermissionDeniedError,
+    ) as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=("You are not authorized to use the requested tool."),
+            detail="You are not authorized to access the requested resource.",
         ) from exc
 
     except ServiceNotFoundError as exc:

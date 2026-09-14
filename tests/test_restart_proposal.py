@@ -1,11 +1,19 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
+from ai_it_support_assistant.repositories.resource_permission_repository import (
+    create_resource_permission,
+)
 from ai_it_support_assistant.schemas.approval import PendingAction
+from ai_it_support_assistant.schemas.auth import User
 from ai_it_support_assistant.schemas.kubernetes import (
     DeploymentRestartActionPayload,
+)
+from ai_it_support_assistant.services.action_proposal_service import (
+    prepare_restart_action,
 )
 from ai_it_support_assistant.services.agent_router_service import (
     AgentRoutingError,
@@ -15,6 +23,9 @@ from ai_it_support_assistant.services.agent_service import (
 )
 from ai_it_support_assistant.services.kubernetes_write_policy_service import (
     KubernetesWritePolicyError,
+)
+from ai_it_support_assistant.services.resource_authorization_service import (
+    ResourcePermissionDeniedError,
 )
 from ai_it_support_assistant.services.tool_authorization_service import (
     ToolAuthorizationError,
@@ -432,3 +443,111 @@ def test_restart_requires_deployment_name(
     mock_validate_restart_policy.assert_not_called()
     mock_get_deployment_state.assert_not_called()
     mock_create_pending_action.assert_not_called()
+
+
+def test_restart_denied_without_namespace_grant(
+    db_session,
+) -> None:
+    user = User(
+        user_id=uuid4(),
+        username="alice",
+        roles=["admin"],
+        disabled=False,
+    )
+
+    with pytest.raises(
+        ResourcePermissionDeniedError,
+    ):
+        prepare_restart_action(
+            session=db_session,
+            current_user=user,
+            deployment_name="api",
+            namespace="team-a-dev",
+            kubernetes_write_enabled=True,
+            kubernetes_restart_allowed_namespaces="team-a-dev",
+            kubernetes_restart_allowed_deployments="api",
+            kubernetes_config_mode="mock",
+            kubernetes_context="",
+        )
+
+
+def test_restart_allowed_with_namespace_grant(
+    db_session,
+    monkeypatch,
+) -> None:
+    user = User(
+        user_id=uuid4(),
+        username="alice",
+        roles=["admin"],
+        disabled=False,
+    )
+
+    create_resource_permission(
+        session=db_session,
+        username="alice",
+        permission="deployment:restart",
+        resource_type="namespace",
+        resource_value="team-a-dev",
+    )
+
+    class FakeDeploymentState:
+        name = "api"
+        namespace = "team-a-dev"
+        desired_replicas = 2
+        ready_replicas = 2
+        available_replicas = 2
+
+    monkeypatch.setattr(
+        "ai_it_support_assistant.services.action_proposal_service.get_deployment_state",
+        lambda **kwargs: FakeDeploymentState(),
+    )
+
+    pending, restart_payload = prepare_restart_action(
+        session=db_session,
+        current_user=user,
+        deployment_name="api",
+        namespace="team-a-dev",
+        kubernetes_write_enabled=True,
+        kubernetes_restart_allowed_namespaces="team-a-dev",
+        kubernetes_restart_allowed_deployments="api",
+        kubernetes_config_mode="local",
+        kubernetes_context="kind-kin",
+    )
+
+    assert pending is not None
+    assert restart_payload.name == "api"
+    assert restart_payload.namespace == "team-a-dev"
+
+
+def test_restart_denied_for_different_namespace(
+    db_session,
+) -> None:
+    user = User(
+        user_id=uuid4(),
+        username="alice",
+        roles=["admin"],
+        disabled=False,
+    )
+
+    create_resource_permission(
+        session=db_session,
+        username="alice",
+        permission="deployment:restart",
+        resource_type="namespace",
+        resource_value="team-a-dev",
+    )
+
+    with pytest.raises(
+        ResourcePermissionDeniedError,
+    ):
+        prepare_restart_action(
+            session=db_session,
+            current_user=user,
+            deployment_name="api",
+            namespace="team-b-dev",
+            kubernetes_write_enabled=True,
+            kubernetes_restart_allowed_namespaces=("team-a-dev,team-b-dev"),
+            kubernetes_restart_allowed_deployments="api",
+            kubernetes_config_mode="mock",
+            kubernetes_context="",
+        )

@@ -2,6 +2,7 @@ from uuid import uuid4
 
 import pytest
 
+from ai_it_support_assistant.core.config import get_settings
 from ai_it_support_assistant.schemas.auth import User
 from ai_it_support_assistant.services.auth_service import (
     create_access_token,
@@ -109,3 +110,29 @@ def test_retrieval_cache_key_includes_roles() -> None:
     )
 
     assert admin_key != reader_key
+
+
+def test_token_endpoint_disabled_in_oidc_mode(
+    client,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(
+        "AUTH_MODE",
+        "oidc",
+    )
+
+    get_settings.cache_clear()
+
+    try:
+        response = client.post(
+            "/api/v1/auth/token",
+            data={
+                "username": "anything",
+                "password": "anything",
+            },
+        )
+
+        assert response.status_code == 404
+
+    finally:
+        get_settings.cache_clear()

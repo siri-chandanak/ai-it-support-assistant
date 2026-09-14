@@ -114,6 +114,11 @@ def test_prepare_restart_action_creates_pending_action(
         roles=["admin"],
     )
 
+    monkeypatch.setattr(
+        "ai_it_support_assistant.services.action_proposal_service.require_namespace_permission",
+        lambda **kwargs: None,
+    )
+
     captured: dict[str, object] = {}
 
     class FakeSettings:
@@ -238,6 +243,11 @@ def test_prepare_restart_action_rejects_zero_replicas(
         roles=["admin"],
     )
 
+    monkeypatch.setattr(
+        "ai_it_support_assistant.services.action_proposal_service.require_namespace_permission",
+        lambda **kwargs: None,
+    )
+
     class FakeSettings:
         mcp_issuer_url = "http://127.0.0.1:8000"
         mcp_resource_server_url = "http://127.0.0.1:8001/mcp"
@@ -292,6 +302,11 @@ def test_prepare_restart_action_adds_single_replica_warning(
     user = make_user(
         username="admin",
         roles=["admin"],
+    )
+
+    monkeypatch.setattr(
+        "ai_it_support_assistant.services.action_proposal_service.require_namespace_permission",
+        lambda **kwargs: None,
     )
 
     class FakeSettings:

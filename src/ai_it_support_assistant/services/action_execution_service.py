@@ -53,6 +53,9 @@ from ai_it_support_assistant.services.kubernetes_write_service import (
     deployment_has_restart_token,
     restart_deployment,
 )
+from ai_it_support_assistant.services.resource_authorization_service import (
+    require_namespace_permission,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -529,6 +532,13 @@ def execute_claimed_restart_action(
     authorize_tool(
         tool_name="restart_deployment",
         user=current_user,
+    )
+
+    require_namespace_permission(
+        user=current_user,
+        permission="deployment:restart",
+        namespace=payload.namespace,
+        session=session,
     )
 
     # Idempotent behavior:

@@ -12,6 +12,9 @@ from ai_it_support_assistant.models.incident import (  # noqa: F401
     IncidentModel,
     PendingActionModel,
 )
+from ai_it_support_assistant.models.resource_permission import (  # noqa: F401
+    ResourcePermissionModel,
+)
 from ai_it_support_assistant.models.user import UserModel  # noqa: F401
 
 # this is the Alembic Config object, which provides

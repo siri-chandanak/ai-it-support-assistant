@@ -73,11 +73,26 @@ class Settings(BaseSettings):
 
     mcp_resource_server_url: str = "http://127.0.0.1:8001/mcp"
 
+    auth_mode: str = "demo"
+
+    oidc_issuer: str = ""
+    oidc_audience: str = ""
+    oidc_jwks_url: str = ""
+    oidc_algorithms: str = "RS256"
+
+    oidc_required_scope: str = "ai-support.access"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @property
+    def oidc_algorithm_list(self) -> list[str]:
+        return [
+            algorithm.strip() for algorithm in self.oidc_algorithms.split(",") if algorithm.strip()
+        ]
 
 
 @lru_cache

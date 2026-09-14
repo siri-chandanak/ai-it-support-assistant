@@ -15,6 +15,7 @@ from ai_it_support_assistant.api.dependencies.auth import (
     get_current_user,
 )
 from ai_it_support_assistant.core.config import (
+    Settings,
     get_settings,
 )
 from ai_it_support_assistant.db.session import (
@@ -46,8 +47,22 @@ def login(
         Session,
         Depends(get_db),
     ],
+    settings: Annotated[
+        Settings,
+        Depends(get_settings),
+    ],
 ) -> TokenResponse:
-    settings = get_settings()
+    if settings.auth_mode == "oidc":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Local authentication is unavailable.",
+        )
+
+    if settings.auth_mode != "demo":
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unsupported authentication mode.",
+        )
 
     try:
         user = authenticate_user(
@@ -57,7 +72,7 @@ def login(
         )
     except AuthenticationError as exc:
         raise HTTPException(
-            status_code=(status.HTTP_401_UNAUTHORIZED),
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password.",
             headers={
                 "WWW-Authenticate": "Bearer",
