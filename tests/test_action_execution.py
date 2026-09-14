@@ -13,6 +13,9 @@ from ai_it_support_assistant.repositories.approval_repository import (
     get_pending_action,
     save_pending_action,
 )
+from ai_it_support_assistant.repositories.resource_permission_repository import (
+    create_resource_permission,
+)
 from ai_it_support_assistant.schemas.approval import (
     PendingAction,
 )
@@ -164,6 +167,24 @@ def approved_action(
     db_session.commit()
 
     return approved
+
+
+@pytest.fixture
+def restart_namespace_grant(
+    db_session,
+    restart_admin_user,
+):
+    grant = create_resource_permission(
+        session=db_session,
+        username=restart_admin_user.username,
+        permission="deployment:restart",
+        resource_type="namespace",
+        resource_value="dev",
+    )
+
+    db_session.flush()
+
+    return grant
 
 
 def claim_for_test(
@@ -575,6 +596,7 @@ def test_restart_execution_token_is_persisted_before_write(
     restart_admin_user,
     restart_settings,
     approved_restart_action,
+    restart_namespace_grant,
 ):
     mock_has_restart_token.return_value = True
 

@@ -1,4 +1,8 @@
 from ai_it_support_assistant.schemas.auth import User
+from ai_it_support_assistant.services.permission_service import (
+    PermissionDeniedError,
+    require_permission,
+)
 
 
 class ToolAuthorizationError(Exception):
@@ -23,16 +27,35 @@ TOOL_ALLOWED_ROLES: dict[str, set[str]] = {
     },
 }
 
+TOOL_PERMISSION: dict[str, str] = {
+    "live_status": "service-status:read",
+    "kubernetes_state": "kubernetes:read",
+    "create_incident": "incident:create",
+    "restart_deployment": "deployment:restart",
+}
+
 
 def authorize_tool(
     *,
     tool_name: str,
     user: User,
 ) -> None:
-    allowed_roles = TOOL_ALLOWED_ROLES.get(tool_name)
+    permission = TOOL_PERMISSION.get(
+        tool_name,
+    )
 
-    if allowed_roles is None:
-        raise ToolAuthorizationError("Unknown tool.")
+    if permission is None:
+        raise ToolAuthorizationError(f"Unknown tool: {tool_name}")
 
-    if not set(user.roles) & allowed_roles:
-        raise ToolAuthorizationError("User is not authorized to use this tool.")
+    if user.disabled:
+        raise ToolAuthorizationError("Disabled users cannot execute tools.")
+
+    try:
+        require_permission(
+            user=user,
+            permission=permission,
+        )
+    except PermissionDeniedError as exc:
+        raise ToolAuthorizationError(
+            f"User is not authorized to execute tool: {tool_name}"
+        ) from exc

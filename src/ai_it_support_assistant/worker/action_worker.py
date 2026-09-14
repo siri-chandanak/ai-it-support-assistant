@@ -33,6 +33,9 @@ from ai_it_support_assistant.schemas.approval import (
 )
 from ai_it_support_assistant.schemas.auth import User
 from ai_it_support_assistant.services.action_execution_service import (
+    execute_claimed_incident_action as execute_claimed_restart_action_service,
+)
+from ai_it_support_assistant.services.action_execution_service import (
     execute_claimed_incident_action as execute_incident_action_service,
 )
 from ai_it_support_assistant.services.action_payload_service import (
@@ -51,6 +54,9 @@ from ai_it_support_assistant.services.kubernetes_rollout_service import (
 )
 from ai_it_support_assistant.services.kubernetes_write_service import (
     restart_deployment,
+)
+from ai_it_support_assistant.services.resource_authorization_service import (
+    require_namespace_permission,
 )
 
 logger = logging.getLogger(__name__)
@@ -112,6 +118,7 @@ def authorize_restart_action(
     action: PendingAction,
     user: User,
     settings: Settings,
+    session: Session,
 ) -> RestartActionPayload:
     if action.action != "restart_deployment":
         raise ActionAuthorizationError(
@@ -130,6 +137,16 @@ def authorize_restart_action(
         payload = parse_restart_payload(action.payload_json)
     except Exception as exc:
         raise ActionAuthorizationError("Restart action payload is invalid.") from exc
+
+    try:
+        require_namespace_permission(
+            user=user,
+            permission="deployment:restart",
+            namespace=payload.namespace,
+            session=session,
+        )
+    except Exception as exc:
+        raise ActionAuthorizationError("User is no longer authorized for this namespace.") from exc
 
     if not settings.enable_write_actions:
         raise ActionAuthorizationError("Write actions are disabled.")
@@ -220,6 +237,7 @@ def execute_claimed_restart_action(
         action=action,
         user=current_user,
         settings=settings,
+        session=session,
     )
 
     def heartbeat() -> None:
@@ -307,6 +325,7 @@ def reconcile_stale_restart_action(
             action=action,
             user=current_user,
             settings=settings,
+            session=authorization_session,
         )
 
     execution_token = action.execution_token
@@ -434,7 +453,7 @@ def execute_claimed_action(
         return
 
     if action.action == "restart_deployment":
-        execute_claimed_restart_action(
+        execute_claimed_restart_action_service(
             session=session,
             approval_id=action.approval_id,
             current_user=current_user,

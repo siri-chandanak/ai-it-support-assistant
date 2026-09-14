@@ -31,6 +31,9 @@ from ai_it_support_assistant.services.kubernetes_state_service import (
 from ai_it_support_assistant.services.live_status_service import (
     get_live_service_status,
 )
+from ai_it_support_assistant.services.resource_authorization_service import (
+    require_namespace_permission,
+)
 from ai_it_support_assistant.services.retrieval_service import (
     retrieve_chunks,
 )
@@ -68,13 +71,20 @@ def register_mcp_capabilities(
         resource_name: str,
         namespace: str,
     ) -> dict[str, object]:
-        """Read the current state of an allowed Kubernetes resource."""
         current_user = current_user_provider()
 
         authorize_tool(
             tool_name="kubernetes_state",
             user=current_user,
         )
+
+        with SessionLocal() as session:
+            require_namespace_permission(
+                user=current_user,
+                permission="kubernetes:read",
+                namespace=namespace,
+                session=session,
+            )
 
         settings = get_settings()
 

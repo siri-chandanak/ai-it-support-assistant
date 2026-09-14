@@ -9,6 +9,9 @@ from ai_it_support_assistant.models.incident import (
     IncidentModel,
     PendingActionModel,
 )
+from ai_it_support_assistant.repositories.resource_permission_repository import (
+    create_resource_permission,
+)
 from ai_it_support_assistant.schemas.agent import (
     AgentDecision,
 )
@@ -23,6 +26,9 @@ from ai_it_support_assistant.schemas.tools import (
 )
 from ai_it_support_assistant.services.agent_service import (
     handle_agent_request,
+)
+from ai_it_support_assistant.services.resource_authorization_service import (
+    ResourcePermissionDeniedError,
 )
 from ai_it_support_assistant.services.tool_authorization_service import (
     ToolAuthorizationError,
@@ -264,6 +270,14 @@ def test_it_support_can_read_deployment_state(
         roles=["it_support"],
     )
 
+    create_resource_permission(
+        session=db_session,
+        username="support",
+        permission="kubernetes:read",
+        resource_type="namespace",
+        resource_value="ai-it-support-test",
+    )
+
     response = call_agent(
         current_user=support_user,
         question=("How many ready replicas does demo-api have in ai-it-support-test?"),
@@ -311,6 +325,14 @@ def test_it_support_can_read_pod_state(
         user_id=UUID("00000000-0000-0000-0000-000000000006"),
         username="support",
         roles=["it_support"],
+    )
+
+    create_resource_permission(
+        session=db_session,
+        username="support",
+        permission="kubernetes:read",
+        resource_type="namespace",
+        resource_value="ai-it-support-test",
     )
 
     response = call_agent(
@@ -363,6 +385,14 @@ def test_kubernetes_uses_default_namespace_when_missing(
         user_id=UUID("00000000-0000-0000-0000-000000000007"),
         username="support",
         roles=["it_support"],
+    )
+
+    create_resource_permission(
+        session=db_session,
+        username="support",
+        permission="kubernetes:read",
+        resource_type="namespace",
+        resource_value="ai-it-support-test",
     )
 
     response = call_agent(
@@ -544,3 +574,35 @@ def test_incident_without_service_does_not_call_live_status(
     assert response.incident_id is None
 
     mock_live_status.assert_not_called()
+
+
+@patch("ai_it_support_assistant.services.agent_service.get_kubernetes_resource_state")
+@patch("ai_it_support_assistant.services.agent_service.route_agent_request")
+def test_it_support_cannot_read_ungranted_namespace(
+    mock_route_agent_request: Mock,
+    mock_kubernetes_tool: Mock,
+    db_session: Session,
+) -> None:
+    mock_route_agent_request.return_value = AgentDecision(
+        action="kubernetes_state",
+        service_name=None,
+        kubernetes_resource_type="deployment",
+        kubernetes_resource_name="demo-api",
+        kubernetes_namespace="finance-prod",
+        reasoning_summary=("The user asks for current Deployment state."),
+    )
+
+    support_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000008"),
+        username="support",
+        roles=["it_support"],
+    )
+
+    with pytest.raises(
+        ResourcePermissionDeniedError,
+    ):
+        call_agent(
+            current_user=support_user,
+            question=("How many ready replicas does demo-api have in finance-prod?"),
+            session=db_session,
+        )

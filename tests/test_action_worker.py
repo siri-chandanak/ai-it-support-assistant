@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock, patch
 from uuid import uuid4
@@ -18,7 +19,9 @@ from ai_it_support_assistant.repositories.approval_repository import (
     save_pending_action,
 )
 from ai_it_support_assistant.schemas.approval import PendingAction
+from ai_it_support_assistant.schemas.auth import User
 from ai_it_support_assistant.worker.action_worker import (
+    authorize_restart_action,
     reconcile_stale_incident_action,
     reconcile_stale_restart_action,
     run_worker_once,
@@ -853,3 +856,101 @@ def test_restart_recovery_reuses_same_token(
 
         assert final_action is not None
         assert final_action.state == "succeeded"
+
+
+def make_user(
+    *,
+    username: str = "it-support",
+    roles: list[str] | None = None,
+) -> User:
+    return User(
+        user_id=uuid4(),
+        username=username,
+        roles=roles or ["it_support"],
+        disabled=False,
+    )
+
+
+def make_restart_action(
+    *,
+    requested_by: str = "alice",
+    namespace: str = "team-a-dev",
+    deployment_name: str = "api",
+) -> PendingAction:
+    payload = {
+        "name": deployment_name,
+        "namespace": namespace,
+        "evidence_desired_replicas": 2,
+        "evidence_ready_replicas": 2,
+        "evidence_available_replicas": 2,
+        "warnings": [],
+    }
+
+    return PendingAction(
+        approval_id="APR-TEST-RESTART",
+        requested_by=requested_by,
+        action="restart_deployment",
+        payload_json=json.dumps(payload),
+        state="executing",
+        version=1,
+        worker_id="worker-test",
+    )
+
+
+def test_authorize_restart_action_checks_namespace_permission(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    user = make_user(
+        username="alice",
+        roles=["admin"],
+    )
+
+    action = make_restart_action(
+        requested_by="alice",
+        namespace="team-a-dev",
+        deployment_name="api",
+    )
+
+    class FakeSettings:
+        enable_write_actions = True
+        allowed_restart_namespaces = {
+            "team-a-dev",
+        }
+        allowed_restart_deployments = {
+            "api",
+        }
+
+    def fake_require_namespace_permission(
+        *,
+        user,
+        permission,
+        namespace,
+        session,
+    ) -> None:
+        captured["username"] = user.username
+        captured["permission"] = permission
+        captured["namespace"] = namespace
+        captured["session"] = session
+
+    monkeypatch.setattr(
+        "ai_it_support_assistant.worker.action_worker.require_namespace_permission",
+        fake_require_namespace_permission,
+    )
+
+    fake_session = object()
+
+    payload = authorize_restart_action(
+        action=action,
+        user=user,
+        settings=FakeSettings(),
+        session=fake_session,
+    )
+
+    assert payload.namespace == "team-a-dev"
+
+    assert captured["username"] == "alice"
+    assert captured["permission"] == "deployment:restart"
+    assert captured["namespace"] == "team-a-dev"
+    assert captured["session"] is fake_session

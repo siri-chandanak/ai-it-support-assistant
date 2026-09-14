@@ -685,3 +685,25 @@ async def test_mcp_server_registers_action_resource_template():
     templates = {str(template.uri_template) for template in result.resource_templates}
 
     assert "action://{approval_id}" in templates
+
+
+def test_mcp_kubernetes_state_checks_namespace_permission(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_require_namespace_permission(
+        *,
+        user,
+        permission,
+        namespace,
+        session,
+    ) -> None:
+        captured["username"] = user.username
+        captured["permission"] = permission
+        captured["namespace"] = namespace
+
+    monkeypatch.setattr(
+        "ai_it_support_assistant.mcp_server.server.require_namespace_permission",
+        fake_require_namespace_permission,
+    )

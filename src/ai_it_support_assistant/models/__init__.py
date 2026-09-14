@@ -9,4 +9,5 @@ __all__ = [
     "PendingActionModel",
     "UserModel",
     "AuditEventModel",
+    "ResourcePermissionModel",
 ]
