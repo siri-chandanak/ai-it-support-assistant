@@ -1,4 +1,5 @@
 import logging
+import time
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -9,6 +10,7 @@ from ai_it_support_assistant.core.request_context import (
 from ai_it_support_assistant.schemas.policy import (
     PolicyDecision,
     PolicyRequest,
+    PolicyTraceStep,
 )
 from ai_it_support_assistant.services.policies.global_policy import (
     evaluate_global_policy,
@@ -36,6 +38,7 @@ def evaluate_policy(
     request: PolicyRequest,
     session: Session,
 ) -> PolicyDecision:
+    started_at = time.perf_counter()
     try:
         decision = _evaluate_policy(
             request=request,
@@ -48,9 +51,38 @@ def evaluate_policy(
             decision=decision,
         )
 
+        duration_ms = (time.perf_counter() - started_at) * 1000
+
+        logger.info(
+            (
+                "policy_decision_completed "
+                "request_id=%s "
+                "decision_id=%s "
+                "username=%s "
+                "action=%s "
+                "resource_type=%s "
+                "resource_id=%s "
+                "allowed=%s "
+                "reason_code=%s "
+                "policy_id=%s "
+                "duration_ms=%.3f"
+            ),
+            get_request_id(),
+            decision.decision_id,
+            request.subject.username,
+            request.action,
+            request.resource.resource_type,
+            request.resource.resource_id,
+            decision.allowed,
+            decision.reason_code,
+            decision.policy_id,
+            duration_ms,
+        )
+
         return decision
 
     except SQLAlchemyError as exc:
+        duration_ms = (time.perf_counter() - started_at) * 1000
         logger.error(
             (
                 "policy_evaluation_failed "
@@ -59,12 +91,14 @@ def evaluate_policy(
                 "action=%s "
                 "resource_type=%s "
                 "resource_id=%s"
+                "duration_ms=%.3f"
             ),
             get_request_id(),
             request.subject.username,
             request.action,
             request.resource.resource_type,
             request.resource.resource_id,
+            duration_ms,
         )
 
         raise PolicyEvaluationError("Policy data could not be loaded.") from exc
@@ -75,7 +109,13 @@ def _evaluate_policy(
     request: PolicyRequest,
     session: Session,
 ) -> PolicyDecision:
-    global_decision = evaluate_global_policy(request)
+
+    trace: list[PolicyTraceStep] = []
+
+    global_decision = evaluate_global_policy(
+        request=request,
+        trace=trace,
+    )
 
     if global_decision is not None:
         return global_decision
@@ -100,12 +140,14 @@ def _evaluate_policy(
         return evaluate_kubernetes_read_policy(
             request=request,
             session=session,
+            trace=trace,
         )
 
     if request.action == "deployment.restart":
         return evaluate_deployment_restart_policy(
             request=request,
             session=session,
+            trace=trace,
         )
 
     if request.action == "incident.create":

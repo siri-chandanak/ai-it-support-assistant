@@ -1,5 +1,11 @@
 from pydantic import BaseModel, Field
 
+from ai_it_support_assistant.schemas.policy import (
+    PolicyContext,
+    PolicyResource,
+    PolicySubject,
+)
+
 
 class EvaluationCase(BaseModel):
     case_id: str
@@ -109,3 +115,58 @@ class AuthorizationEvaluationSummary(BaseModel):
     behavior_accuracy: float
 
     results: list[AuthorizationEvaluationResult]
+
+
+class PolicyEvaluationCase(BaseModel):
+    case_id: str
+    description: str
+
+    subject: PolicySubject
+    action: str
+    resource: PolicyResource
+
+    context: PolicyContext = Field(default_factory=PolicyContext)
+
+    expected_allowed: bool
+    expected_reason_code: str | None = None
+
+
+class PolicyEvaluationResult(BaseModel):
+    case_id: str
+    description: str
+
+    expected_allowed: bool
+    actual_allowed: bool
+
+    expected_reason_code: str | None = None
+    actual_reason_code: str
+
+    policy_id: str
+
+    decision_correct: bool
+    reason_correct: bool
+
+    false_allow: bool
+    false_deny: bool
+
+    passed: bool
+
+
+class PolicyEvaluationSummary(BaseModel):
+    total_cases: int
+
+    passed_cases: int
+    failed_cases: int
+
+    pass_rate: float
+
+    expected_allows: int
+    expected_denies: int
+
+    false_allows: int
+    false_denies: int
+
+    allow_accuracy: float
+    deny_accuracy: float
+
+    results: list[PolicyEvaluationResult]
