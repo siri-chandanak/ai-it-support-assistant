@@ -54,7 +54,7 @@ jobs:
         run: uv sync --locked --dev
 
       - name: Install OPA
-        uses: open-policy-agent/setup-opa
+        uses: open-policy-agent/setup-opa@v2
         with:
           version: v1.17.1
 
