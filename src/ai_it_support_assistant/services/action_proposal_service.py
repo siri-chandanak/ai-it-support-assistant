@@ -78,9 +78,7 @@ def prepare_restart_action(
     This function creates a pending action only.
     It does not restart the Deployment.
     """
-    subject = build_policy_subject(
-        current_user
-    )
+    subject = build_policy_subject(current_user)
 
     policy_decision = authorize_deployment_restart(
         subject=subject,
@@ -90,26 +88,18 @@ def prepare_restart_action(
         writes_enabled=kubernetes_write_enabled,
         allowed_namespaces=[
             value.strip()
-            for value in (
-                kubernetes_restart_allowed_namespaces
-                or ""
-            ).split(",")
+            for value in (kubernetes_restart_allowed_namespaces or "").split(",")
             if value.strip()
         ],
         allowed_deployments=[
             value.strip()
-            for value in (
-                kubernetes_restart_allowed_deployments
-                or ""
-            ).split(",")
+            for value in (kubernetes_restart_allowed_deployments or "").split(",")
             if value.strip()
         ],
         session=session,
     )
 
-    enforce_policy(
-        policy_decision
-    )
+    enforce_policy(policy_decision)
 
     deployment_state = get_deployment_state(
         name=deployment_name,

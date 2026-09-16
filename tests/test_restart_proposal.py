@@ -99,13 +99,12 @@ def make_pending_action(
         failure_reason=None,
     )
 
+
 def allowed_restart_decision() -> PolicyDecision:
     return PolicyDecision(
         allowed=True,
         reason_code="allowed",
-        reason=(
-            "Deployment restart policy allowed."
-        ),
+        reason=("Deployment restart policy allowed."),
         policy_id="deployment-restart-v1",
         obligations=[
             "explicit_approval",
@@ -161,39 +160,23 @@ def call_agent(
     )
 
 
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}.create_pending_action"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}.get_deployment_state"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}.authorize_deployment_restart"
-)
-@patch(
-    f"{AGENT_SERVICE_PATH}.route_agent_request"
-)
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.create_pending_action")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.get_deployment_state")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.authorize_deployment_restart")
+@patch(f"{AGENT_SERVICE_PATH}.route_agent_request")
 def test_restart_proposal_requires_approval(
     mock_route_agent_request,
     mock_authorize_deployment_restart,
     mock_get_deployment_state,
     mock_create_pending_action,
 ) -> None:
-    mock_route_agent_request.return_value = (
-        make_restart_decision()
-    )
+    mock_route_agent_request.return_value = make_restart_decision()
 
-    mock_authorize_deployment_restart.return_value = (
-        allowed_restart_decision()
-    )
+    mock_authorize_deployment_restart.return_value = allowed_restart_decision()
 
-    mock_get_deployment_state.return_value = (
-        make_deployment_state()
-    )
+    mock_get_deployment_state.return_value = make_deployment_state()
 
-    mock_create_pending_action.return_value = (
-        make_pending_action()
-    )
+    mock_create_pending_action.return_value = make_pending_action()
 
     session = MagicMock()
 
@@ -212,46 +195,27 @@ def test_restart_proposal_requires_approval(
     mock_create_pending_action.assert_called_once()
 
 
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "create_pending_action"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "get_deployment_state"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "authorize_deployment_restart"
-)
-@patch(
-    f"{AGENT_SERVICE_PATH}.route_agent_request"
-)
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.create_pending_action")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.get_deployment_state")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.authorize_deployment_restart")
+@patch(f"{AGENT_SERVICE_PATH}.route_agent_request")
 def test_restart_proposal_stores_validated_payload(
     mock_route_agent_request,
     mock_authorize_deployment_restart,
     mock_get_deployment_state,
     mock_create_pending_action,
 ) -> None:
-    mock_route_agent_request.return_value = (
-        make_restart_decision()
+    mock_route_agent_request.return_value = make_restart_decision()
+
+    mock_authorize_deployment_restart.return_value = allowed_restart_decision()
+
+    mock_get_deployment_state.return_value = make_deployment_state(
+        desired_replicas=3,
+        ready_replicas=2,
+        available_replicas=2,
     )
 
-    mock_authorize_deployment_restart.return_value = (
-        allowed_restart_decision()
-    )
-
-    mock_get_deployment_state.return_value = (
-        make_deployment_state(
-            desired_replicas=3,
-            ready_replicas=2,
-            available_replicas=2,
-        )
-    )
-
-    mock_create_pending_action.return_value = (
-        make_pending_action()
-    )
+    mock_create_pending_action.return_value = make_pending_action()
 
     call_agent()
 
@@ -271,46 +235,27 @@ def test_restart_proposal_stores_validated_payload(
     assert payload.warnings == []
 
 
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "create_pending_action"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "get_deployment_state"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "authorize_deployment_restart"
-)
-@patch(
-    f"{AGENT_SERVICE_PATH}.route_agent_request"
-)
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.create_pending_action")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.get_deployment_state")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.authorize_deployment_restart")
+@patch(f"{AGENT_SERVICE_PATH}.route_agent_request")
 def test_restart_proposal_warns_for_single_replica(
     mock_route_agent_request,
     mock_authorize_deployment_restart,
     mock_get_deployment_state,
     mock_create_pending_action,
 ) -> None:
-    mock_route_agent_request.return_value = (
-        make_restart_decision()
+    mock_route_agent_request.return_value = make_restart_decision()
+
+    mock_authorize_deployment_restart.return_value = allowed_restart_decision()
+
+    mock_get_deployment_state.return_value = make_deployment_state(
+        desired_replicas=1,
+        ready_replicas=1,
+        available_replicas=1,
     )
 
-    mock_authorize_deployment_restart.return_value = (
-        allowed_restart_decision()
-    )
-
-    mock_get_deployment_state.return_value = (
-        make_deployment_state(
-            desired_replicas=1,
-            ready_replicas=1,
-            available_replicas=1,
-        )
-    )
-
-    mock_create_pending_action.return_value = (
-        make_pending_action()
-    )
+    mock_create_pending_action.return_value = make_pending_action()
 
     response = call_agent()
 
@@ -323,41 +268,24 @@ def test_restart_proposal_warns_for_single_replica(
     mock_create_pending_action.assert_called_once()
 
 
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "create_pending_action"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "get_deployment_state"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "authorize_deployment_restart"
-)
-@patch(
-    f"{AGENT_SERVICE_PATH}.route_agent_request"
-)
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.create_pending_action")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.get_deployment_state")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.authorize_deployment_restart")
+@patch(f"{AGENT_SERVICE_PATH}.route_agent_request")
 def test_restart_proposal_rejects_zero_replicas(
     mock_route_agent_request,
     mock_authorize_deployment_restart,
     mock_get_deployment_state,
     mock_create_pending_action,
 ) -> None:
-    mock_route_agent_request.return_value = (
-        make_restart_decision()
-    )
+    mock_route_agent_request.return_value = make_restart_decision()
 
-    mock_authorize_deployment_restart.return_value = (
-        allowed_restart_decision()
-    )
+    mock_authorize_deployment_restart.return_value = allowed_restart_decision()
 
-    mock_get_deployment_state.return_value = (
-        make_deployment_state(
-            desired_replicas=0,
-            ready_replicas=0,
-            available_replicas=0,
-        )
+    mock_get_deployment_state.return_value = make_deployment_state(
+        desired_replicas=0,
+        ready_replicas=0,
+        available_replicas=0,
     )
 
     with pytest.raises(
@@ -369,40 +297,22 @@ def test_restart_proposal_rejects_zero_replicas(
     mock_create_pending_action.assert_not_called()
 
 
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "create_pending_action"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "get_deployment_state"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "authorize_deployment_restart"
-)
-@patch(
-    f"{AGENT_SERVICE_PATH}.route_agent_request"
-)
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.create_pending_action")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.get_deployment_state")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.authorize_deployment_restart")
+@patch(f"{AGENT_SERVICE_PATH}.route_agent_request")
 def test_unauthorized_user_cannot_propose_restart(
     mock_route_agent_request,
     mock_authorize_deployment_restart,
     mock_get_deployment_state,
     mock_create_pending_action,
 ) -> None:
-    mock_route_agent_request.return_value = (
-        make_restart_decision()
-    )
+    mock_route_agent_request.return_value = make_restart_decision()
 
-    mock_authorize_deployment_restart.return_value = (
-        denied_restart_decision(
-            reason_code="missing_permission",
-            reason=(
-                "Required capability permission "
-                "is missing."
-            ),
-            policy_id="global-permission-v1",
-        )
+    mock_authorize_deployment_restart.return_value = denied_restart_decision(
+        reason_code="missing_permission",
+        reason=("Required capability permission is missing."),
+        policy_id="global-permission-v1",
     )
 
     current_user = make_user(
@@ -410,24 +320,16 @@ def test_unauthorized_user_cannot_propose_restart(
         roles=["reader"],
     )
 
-    with pytest.raises(
-        AuthorizationDeniedError
-    ) as exc_info:
+    with pytest.raises(AuthorizationDeniedError) as exc_info:
         call_agent(
             current_user=current_user,
         )
 
-    assert (
-        exc_info.value.decision.reason_code
-        == "missing_permission"
-    )
+    assert exc_info.value.decision.reason_code == "missing_permission"
 
     mock_authorize_deployment_restart.assert_called_once()
 
-    call_kwargs = (
-        mock_authorize_deployment_restart
-        .call_args.kwargs
-    )
+    call_kwargs = mock_authorize_deployment_restart.call_args.kwargs
 
     assert call_kwargs["phase"] == "proposal"
     assert call_kwargs.get("approval_state") is None
@@ -436,137 +338,72 @@ def test_unauthorized_user_cannot_propose_restart(
     mock_create_pending_action.assert_not_called()
 
 
-
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "create_pending_action"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "get_deployment_state"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "authorize_deployment_restart"
-)
-@patch(
-    f"{AGENT_SERVICE_PATH}.route_agent_request"
-)
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.create_pending_action")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.get_deployment_state")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.authorize_deployment_restart")
+@patch(f"{AGENT_SERVICE_PATH}.route_agent_request")
 def test_admin_cannot_bypass_namespace_policy(
     mock_route_agent_request,
     mock_authorize_deployment_restart,
     mock_get_deployment_state,
     mock_create_pending_action,
 ) -> None:
-    mock_route_agent_request.return_value = (
-        make_restart_decision(
-            namespace="production",
-        )
+    mock_route_agent_request.return_value = make_restart_decision(
+        namespace="production",
     )
 
-    mock_authorize_deployment_restart.return_value = (
-        denied_restart_decision(
-            reason_code=(
-                "namespace_not_globally_allowed"
-            ),
-            reason=(
-                "Namespace is not globally "
-                "allowed for restart."
-            ),
-        )
+    mock_authorize_deployment_restart.return_value = denied_restart_decision(
+        reason_code=("namespace_not_globally_allowed"),
+        reason=("Namespace is not globally allowed for restart."),
     )
 
-    with pytest.raises(
-        AuthorizationDeniedError
-    ) as exc_info:
+    with pytest.raises(AuthorizationDeniedError) as exc_info:
         call_agent()
 
-    assert (
-        exc_info.value.decision.reason_code
-        == "namespace_not_globally_allowed"
-    )
+    assert exc_info.value.decision.reason_code == "namespace_not_globally_allowed"
 
     mock_get_deployment_state.assert_not_called()
     mock_create_pending_action.assert_not_called()
 
 
-
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "create_pending_action"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "get_deployment_state"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "authorize_deployment_restart"
-)
-@patch(
-    f"{AGENT_SERVICE_PATH}.route_agent_request"
-)
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.create_pending_action")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.get_deployment_state")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.authorize_deployment_restart")
+@patch(f"{AGENT_SERVICE_PATH}.route_agent_request")
 def test_admin_cannot_bypass_deployment_policy(
     mock_route_agent_request,
     mock_authorize_deployment_restart,
     mock_get_deployment_state,
     mock_create_pending_action,
 ) -> None:
-    mock_route_agent_request.return_value = (
-        make_restart_decision(
-            deployment_name=(
-                "identity-controller"
-            ),
-        )
+    mock_route_agent_request.return_value = make_restart_decision(
+        deployment_name=("identity-controller"),
     )
 
-    mock_authorize_deployment_restart.return_value = (
-        denied_restart_decision(
-            reason_code=(
-                "deployment_not_globally_allowed"
-            ),
-            reason=(
-                "Deployment is not globally "
-                "allowed for restart."
-            ),
-        )
+    mock_authorize_deployment_restart.return_value = denied_restart_decision(
+        reason_code=("deployment_not_globally_allowed"),
+        reason=("Deployment is not globally allowed for restart."),
     )
 
-    with pytest.raises(
-        AuthorizationDeniedError
-    ) as exc_info:
+    with pytest.raises(AuthorizationDeniedError) as exc_info:
         call_agent()
 
-    assert (
-        exc_info.value.decision.reason_code
-        == "deployment_not_globally_allowed"
-    )
+    assert exc_info.value.decision.reason_code == "deployment_not_globally_allowed"
 
     mock_get_deployment_state.assert_not_called()
     mock_create_pending_action.assert_not_called()
 
 
-
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "create_pending_action"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "get_deployment_state"
-)
-@patch(
-    f"{AGENT_SERVICE_PATH}.route_agent_request"
-)
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.create_pending_action")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.get_deployment_state")
+@patch(f"{AGENT_SERVICE_PATH}.route_agent_request")
 def test_restart_requires_explicit_namespace(
     mock_route_agent_request,
     mock_get_deployment_state,
     mock_create_pending_action,
 ) -> None:
-    mock_route_agent_request.return_value = (
-        make_restart_decision(
-            namespace=None,
-        )
+    mock_route_agent_request.return_value = make_restart_decision(
+        namespace=None,
     )
 
     with pytest.raises(
@@ -579,26 +416,16 @@ def test_restart_requires_explicit_namespace(
     mock_create_pending_action.assert_not_called()
 
 
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "create_pending_action"
-)
-@patch(
-    f"{ACTION_PROPOSAL_SERVICE_PATH}."
-    "get_deployment_state"
-)
-@patch(
-    f"{AGENT_SERVICE_PATH}.route_agent_request"
-)
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.create_pending_action")
+@patch(f"{ACTION_PROPOSAL_SERVICE_PATH}.get_deployment_state")
+@patch(f"{AGENT_SERVICE_PATH}.route_agent_request")
 def test_restart_requires_deployment_name(
     mock_route_agent_request,
     mock_get_deployment_state,
     mock_create_pending_action,
 ) -> None:
-    mock_route_agent_request.return_value = (
-        make_restart_decision(
-            deployment_name=None,
-        )
+    mock_route_agent_request.return_value = make_restart_decision(
+        deployment_name=None,
     )
 
     with pytest.raises(
@@ -621,29 +448,20 @@ def test_restart_denied_without_namespace_grant(
         disabled=False,
     )
 
-    with pytest.raises(
-        AuthorizationDeniedError
-    ) as exc_info:
+    with pytest.raises(AuthorizationDeniedError) as exc_info:
         prepare_restart_action(
             session=db_session,
             current_user=user,
             deployment_name="api",
             namespace="team-a-dev",
             kubernetes_write_enabled=True,
-            kubernetes_restart_allowed_namespaces=(
-                "team-a-dev"
-            ),
-            kubernetes_restart_allowed_deployments=(
-                "api"
-            ),
+            kubernetes_restart_allowed_namespaces=("team-a-dev"),
+            kubernetes_restart_allowed_deployments=("api"),
             kubernetes_config_mode="mock",
             kubernetes_context="",
         )
 
-    assert (
-        exc_info.value.decision.reason_code
-        == "namespace_access_denied"
-    )
+    assert exc_info.value.decision.reason_code == "namespace_access_denied"
 
 
 def test_restart_allowed_with_namespace_grant(
@@ -673,30 +491,20 @@ def test_restart_allowed_with_namespace_grant(
         available_replicas = 2
 
     monkeypatch.setattr(
-        (
-            "ai_it_support_assistant.services."
-            "action_proposal_service."
-            "get_deployment_state"
-        ),
+        ("ai_it_support_assistant.services.action_proposal_service.get_deployment_state"),
         lambda **kwargs: FakeDeploymentState(),
     )
 
-    pending, restart_payload = (
-        prepare_restart_action(
-            session=db_session,
-            current_user=user,
-            deployment_name="api",
-            namespace="team-a-dev",
-            kubernetes_write_enabled=True,
-            kubernetes_restart_allowed_namespaces=(
-                "team-a-dev"
-            ),
-            kubernetes_restart_allowed_deployments=(
-                "api"
-            ),
-            kubernetes_config_mode="local",
-            kubernetes_context="kind-kin",
-        )
+    pending, restart_payload = prepare_restart_action(
+        session=db_session,
+        current_user=user,
+        deployment_name="api",
+        namespace="team-a-dev",
+        kubernetes_write_enabled=True,
+        kubernetes_restart_allowed_namespaces=("team-a-dev"),
+        kubernetes_restart_allowed_deployments=("api"),
+        kubernetes_config_mode="local",
+        kubernetes_context="kind-kin",
     )
 
     assert pending is not None
@@ -722,26 +530,17 @@ def test_restart_denied_for_different_namespace(
         resource_value="team-a-dev",
     )
 
-    with pytest.raises(
-        AuthorizationDeniedError
-    ) as exc_info:
+    with pytest.raises(AuthorizationDeniedError) as exc_info:
         prepare_restart_action(
             session=db_session,
             current_user=user,
             deployment_name="api",
             namespace="team-b-dev",
             kubernetes_write_enabled=True,
-            kubernetes_restart_allowed_namespaces=(
-                "team-a-dev,team-b-dev"
-            ),
-            kubernetes_restart_allowed_deployments=(
-                "api"
-            ),
+            kubernetes_restart_allowed_namespaces=("team-a-dev,team-b-dev"),
+            kubernetes_restart_allowed_deployments=("api"),
             kubernetes_config_mode="mock",
             kubernetes_context="",
         )
 
-    assert (
-        exc_info.value.decision.reason_code
-        == "namespace_access_denied"
-    )
+    assert exc_info.value.decision.reason_code == "namespace_access_denied"

@@ -189,6 +189,7 @@ def restart_namespace_grant(
 
     return grant
 
+
 def allowed_restart_execution_decision() -> PolicyDecision:
     return PolicyDecision(
         allowed=True,
@@ -201,6 +202,7 @@ def allowed_restart_execution_decision() -> PolicyDecision:
         ],
     )
 
+
 def allowed_incident_execution_decision() -> PolicyDecision:
     return PolicyDecision(
         allowed=True,
@@ -211,6 +213,7 @@ def allowed_incident_execution_decision() -> PolicyDecision:
             "audit_execution",
         ],
     )
+
 
 def denied_restart_execution_decision(
     *,
@@ -224,6 +227,7 @@ def denied_restart_execution_decision(
         policy_id="deployment-restart-v1",
         obligations=[],
     )
+
 
 def claim_for_test(
     *,
@@ -376,12 +380,8 @@ def test_successful_incident_execution(
     current_user: User,
 ) -> None:
     monkeypatch.setattr(
-        "ai_it_support_assistant.services."
-        "action_execution_service."
-        "authorize_incident_create",
-        lambda **kwargs: (
-            allowed_incident_execution_decision()
-        ),
+        "ai_it_support_assistant.services.action_execution_service.authorize_incident_create",
+        lambda **kwargs: allowed_incident_execution_decision(),
     )
 
     worker_id = claim_for_test(
@@ -416,13 +416,10 @@ def test_external_failure_marks_action_failed(
 ) -> None:
 
     monkeypatch.setattr(
-        "ai_it_support_assistant.services."
-        "action_execution_service."
-        "authorize_incident_create",
-        lambda **kwargs: (
-            allowed_incident_execution_decision()
-        ),
+        "ai_it_support_assistant.services.action_execution_service.authorize_incident_create",
+        lambda **kwargs: allowed_incident_execution_decision(),
     )
+
     def fake_create_incident(**kwargs):
         raise RuntimeError("simulated external incident provider failure")
 
@@ -463,12 +460,8 @@ def test_failed_action_does_not_automatically_retry(
     current_user: User,
 ) -> None:
     monkeypatch.setattr(
-        "ai_it_support_assistant.services."
-        "action_execution_service."
-        "authorize_incident_create",
-        lambda **kwargs: (
-            allowed_incident_execution_decision()
-        ),
+        "ai_it_support_assistant.services.action_execution_service.authorize_incident_create",
+        lambda **kwargs: allowed_incident_execution_decision(),
     )
     create_incident_calls = 0
 
@@ -517,12 +510,8 @@ def test_retry_after_success_does_not_create_second_incident(
 ) -> None:
     create_incident_calls = 0
     monkeypatch.setattr(
-        "ai_it_support_assistant.services."
-        "action_execution_service."
-        "authorize_incident_create",
-        lambda **kwargs: (
-            allowed_incident_execution_decision()
-        ),
+        "ai_it_support_assistant.services.action_execution_service.authorize_incident_create",
+        lambda **kwargs: allowed_incident_execution_decision(),
     )
 
     expected_incident_id = f"INC-{uuid4().hex[:8].upper()}"
@@ -655,26 +644,10 @@ def test_rejected_action_is_terminal(
         )
 
 
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "deployment_has_restart_token"
-)
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "restart_deployment"
-)
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "get_deployment_state"
-)
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "monitor_deployment_rollout"
-)
+@patch("ai_it_support_assistant.services.action_execution_service.deployment_has_restart_token")
+@patch("ai_it_support_assistant.services.action_execution_service.restart_deployment")
+@patch("ai_it_support_assistant.services.action_execution_service.get_deployment_state")
+@patch("ai_it_support_assistant.services.action_execution_service.monitor_deployment_rollout")
 def test_restart_execution_token_is_persisted_before_write(
     mock_monitor_rollout,
     mock_get_deployment_state,
@@ -687,12 +660,8 @@ def test_restart_execution_token_is_persisted_before_write(
     approved_restart_action,
 ):
     monkeypatch.setattr(
-        "ai_it_support_assistant.services."
-        "action_execution_service."
-        "authorize_deployment_restart",
-        lambda **kwargs: (
-            allowed_restart_execution_decision()
-        ),
+        "ai_it_support_assistant.services.action_execution_service.authorize_deployment_restart",
+        lambda **kwargs: allowed_restart_execution_decision(),
     )
 
     mock_has_restart_token.return_value = True
@@ -702,37 +671,26 @@ def test_restart_execution_token_is_persisted_before_write(
     ):
         saved = get_pending_action(
             session=db_session,
-            approval_id=(
-                approved_restart_action.approval_id
-            ),
+            approval_id=(approved_restart_action.approval_id),
         )
 
         assert saved is not None
         assert saved.state == "executing"
         assert saved.execution_token is not None
 
-        assert (
-            kwargs["restart_timestamp"]
-            == saved.execution_token
-        )
+        assert kwargs["restart_timestamp"] == saved.execution_token
 
-    mock_restart_deployment.side_effect = (
-        assert_token_exists_before_patch
-    )
+    mock_restart_deployment.side_effect = assert_token_exists_before_patch
 
-    mock_monitor_rollout.return_value = (
-        DeploymentRolloutResult(
-            deployment_name="payment-api",
-            namespace="dev",
-            outcome="healthy",
-            desired_replicas=3,
-            updated_replicas=3,
-            ready_replicas=3,
-            available_replicas=3,
-            message=(
-                "Deployment rollout is healthy."
-            ),
-        )
+    mock_monitor_rollout.return_value = DeploymentRolloutResult(
+        deployment_name="payment-api",
+        namespace="dev",
+        outcome="healthy",
+        desired_replicas=3,
+        updated_replicas=3,
+        ready_replicas=3,
+        available_replicas=3,
+        message=("Deployment rollout is healthy."),
     )
 
     worker_id = claim_for_test(
@@ -742,9 +700,7 @@ def test_restart_execution_token_is_persisted_before_write(
 
     execute_claimed_restart_action(
         session=db_session,
-        approval_id=(
-            approved_restart_action.approval_id
-        ),
+        approval_id=(approved_restart_action.approval_id),
         current_user=restart_admin_user,
         worker_id=worker_id,
         settings=restart_settings,
@@ -753,26 +709,10 @@ def test_restart_execution_token_is_persisted_before_write(
     mock_restart_deployment.assert_called_once()
 
 
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "monitor_deployment_rollout"
-)
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "deployment_has_restart_token"
-)
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "restart_deployment"
-)
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "get_deployment_state"
-)
+@patch("ai_it_support_assistant.services.action_execution_service.monitor_deployment_rollout")
+@patch("ai_it_support_assistant.services.action_execution_service.deployment_has_restart_token")
+@patch("ai_it_support_assistant.services.action_execution_service.restart_deployment")
+@patch("ai_it_support_assistant.services.action_execution_service.get_deployment_state")
 def test_restart_action_succeeds_when_marker_is_verified(
     mock_get_deployment_state,
     mock_restart_deployment,
@@ -784,20 +724,14 @@ def test_restart_action_succeeds_when_marker_is_verified(
     approved_restart_action,
 ):
     monkeypatch.setattr(
-        "ai_it_support_assistant.services."
-        "action_execution_service."
-        "authorize_deployment_restart",
-        lambda **kwargs: (
-            allowed_restart_execution_decision()
-        ),
+        "ai_it_support_assistant.services.action_execution_service.authorize_deployment_restart",
+        lambda **kwargs: allowed_restart_execution_decision(),
     )
 
     settings = Settings(
         kubernetes_write_enabled=True,
         kubernetes_restart_allowed_namespaces="dev",
-        kubernetes_restart_allowed_deployments=(
-            "payment-api"
-        ),
+        kubernetes_restart_allowed_deployments=("payment-api"),
         kubernetes_config_mode="kubeconfig",
         kubernetes_context="test-context",
     )
@@ -805,19 +739,15 @@ def test_restart_action_succeeds_when_marker_is_verified(
     mock_restart_deployment.return_value = None
     mock_has_restart_token.return_value = True
 
-    mock_monitor_rollout.return_value = (
-        DeploymentRolloutResult(
-            deployment_name="payment-api",
-            namespace="dev",
-            outcome="healthy",
-            desired_replicas=3,
-            updated_replicas=3,
-            ready_replicas=3,
-            available_replicas=3,
-            message=(
-                "Deployment rollout is healthy."
-            ),
-        )
+    mock_monitor_rollout.return_value = DeploymentRolloutResult(
+        deployment_name="payment-api",
+        namespace="dev",
+        outcome="healthy",
+        desired_replicas=3,
+        updated_replicas=3,
+        ready_replicas=3,
+        available_replicas=3,
+        message=("Deployment rollout is healthy."),
     )
 
     worker_id = claim_for_test(
@@ -827,9 +757,7 @@ def test_restart_action_succeeds_when_marker_is_verified(
 
     result = execute_claimed_restart_action(
         session=db_session,
-        approval_id=(
-            approved_restart_action.approval_id
-        ),
+        approval_id=(approved_restart_action.approval_id),
         current_user=restart_admin_user,
         worker_id=worker_id,
         settings=settings,
@@ -841,9 +769,7 @@ def test_restart_action_succeeds_when_marker_is_verified(
 
     saved = get_pending_action(
         session=db_session,
-        approval_id=(
-            approved_restart_action.approval_id
-        ),
+        approval_id=(approved_restart_action.approval_id),
     )
 
     assert saved is not None
@@ -854,26 +780,10 @@ def test_restart_action_succeeds_when_marker_is_verified(
     mock_restart_deployment.assert_called_once()
 
 
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "deployment_has_restart_token"
-)
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "restart_deployment"
-)
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "get_deployment_state"
-)
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "monitor_deployment_rollout"
-)
+@patch("ai_it_support_assistant.services.action_execution_service.deployment_has_restart_token")
+@patch("ai_it_support_assistant.services.action_execution_service.restart_deployment")
+@patch("ai_it_support_assistant.services.action_execution_service.get_deployment_state")
+@patch("ai_it_support_assistant.services.action_execution_service.monitor_deployment_rollout")
 def test_restart_succeeds_after_reconciliation(
     mock_monitor_rollout,
     mock_get_deployment_state,
@@ -886,33 +796,23 @@ def test_restart_succeeds_after_reconciliation(
     approved_restart_action,
 ):
     monkeypatch.setattr(
-        "ai_it_support_assistant.services."
-        "action_execution_service."
-        "authorize_deployment_restart",
-        lambda **kwargs: (
-            allowed_restart_execution_decision()
-        ),
+        "ai_it_support_assistant.services.action_execution_service.authorize_deployment_restart",
+        lambda **kwargs: allowed_restart_execution_decision(),
     )
 
-    mock_restart_deployment.side_effect = (
-        KubernetesWriteError("timeout")
-    )
+    mock_restart_deployment.side_effect = KubernetesWriteError("timeout")
 
     mock_has_restart_token.return_value = True
 
-    mock_monitor_rollout.return_value = (
-        DeploymentRolloutResult(
-            deployment_name="payment-api",
-            namespace="dev",
-            outcome="healthy",
-            desired_replicas=3,
-            updated_replicas=3,
-            ready_replicas=3,
-            available_replicas=3,
-            message=(
-                "Deployment rollout is healthy."
-            ),
-        )
+    mock_monitor_rollout.return_value = DeploymentRolloutResult(
+        deployment_name="payment-api",
+        namespace="dev",
+        outcome="healthy",
+        desired_replicas=3,
+        updated_replicas=3,
+        ready_replicas=3,
+        available_replicas=3,
+        message=("Deployment rollout is healthy."),
     )
 
     worker_id = claim_for_test(
@@ -922,9 +822,7 @@ def test_restart_succeeds_after_reconciliation(
 
     result = execute_claimed_restart_action(
         session=db_session,
-        approval_id=(
-            approved_restart_action.approval_id
-        ),
+        approval_id=(approved_restart_action.approval_id),
         current_user=restart_admin_user,
         worker_id=worker_id,
         settings=restart_settings,
@@ -937,21 +835,9 @@ def test_restart_succeeds_after_reconciliation(
     mock_has_restart_token.assert_called_once()
 
 
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "deployment_has_restart_token"
-)
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "restart_deployment"
-)
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "get_deployment_state"
-)
+@patch("ai_it_support_assistant.services.action_execution_service.deployment_has_restart_token")
+@patch("ai_it_support_assistant.services.action_execution_service.restart_deployment")
+@patch("ai_it_support_assistant.services.action_execution_service.get_deployment_state")
 def test_restart_fails_when_reconciliation_fails(
     mock_get_deployment_state,
     mock_restart_deployment,
@@ -963,17 +849,11 @@ def test_restart_fails_when_reconciliation_fails(
     approved_restart_action,
 ):
     monkeypatch.setattr(
-        "ai_it_support_assistant.services."
-        "action_execution_service."
-        "authorize_deployment_restart",
-        lambda **kwargs: (
-            allowed_restart_execution_decision()
-        ),
+        "ai_it_support_assistant.services.action_execution_service.authorize_deployment_restart",
+        lambda **kwargs: allowed_restart_execution_decision(),
     )
 
-    mock_restart_deployment.side_effect = (
-        KubernetesWriteError("timeout")
-    )
+    mock_restart_deployment.side_effect = KubernetesWriteError("timeout")
 
     mock_has_restart_token.return_value = False
 
@@ -982,14 +862,10 @@ def test_restart_fails_when_reconciliation_fails(
         action=approved_restart_action,
     )
 
-    with pytest.raises(
-        KubernetesRestartExecutionError
-    ):
+    with pytest.raises(KubernetesRestartExecutionError):
         execute_claimed_restart_action(
             session=db_session,
-            approval_id=(
-                approved_restart_action.approval_id
-            ),
+            approval_id=(approved_restart_action.approval_id),
             current_user=restart_admin_user,
             worker_id=worker_id,
             settings=restart_settings,
@@ -997,9 +873,7 @@ def test_restart_fails_when_reconciliation_fails(
 
     saved = get_pending_action(
         session=db_session,
-        approval_id=(
-            approved_restart_action.approval_id
-        ),
+        approval_id=(approved_restart_action.approval_id),
     )
 
     assert saved is not None
@@ -1008,16 +882,8 @@ def test_restart_fails_when_reconciliation_fails(
     mock_restart_deployment.assert_called_once()
 
 
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "restart_deployment"
-)
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "authorize_deployment_restart"
-)
+@patch("ai_it_support_assistant.services.action_execution_service.restart_deployment")
+@patch("ai_it_support_assistant.services.action_execution_service.authorize_deployment_restart")
 def test_restart_policy_is_rechecked_before_execution(
     mock_authorize_deployment_restart,
     mock_restart_deployment,
@@ -1026,20 +892,11 @@ def test_restart_policy_is_rechecked_before_execution(
     restart_settings,
     approved_restart_action,
 ):
-    restart_settings.kubernetes_restart_allowed_deployments = (
-        "some-other-deployment"
-    )
+    restart_settings.kubernetes_restart_allowed_deployments = "some-other-deployment"
 
-    mock_authorize_deployment_restart.return_value = (
-        denied_restart_execution_decision(
-            reason_code=(
-                "deployment_not_globally_allowed"
-            ),
-            reason=(
-                "Deployment is not globally "
-                "allowed for restart."
-            ),
-        )
+    mock_authorize_deployment_restart.return_value = denied_restart_execution_decision(
+        reason_code=("deployment_not_globally_allowed"),
+        reason=("Deployment is not globally allowed for restart."),
     )
 
     worker_id = claim_for_test(
@@ -1047,78 +904,42 @@ def test_restart_policy_is_rechecked_before_execution(
         action=approved_restart_action,
     )
 
-    with pytest.raises(
-        AuthorizationDeniedError
-    ) as exc_info:
+    with pytest.raises(AuthorizationDeniedError) as exc_info:
         execute_claimed_restart_action(
             session=db_session,
-            approval_id=(
-                approved_restart_action.approval_id
-            ),
+            approval_id=(approved_restart_action.approval_id),
             current_user=restart_admin_user,
             worker_id=worker_id,
             settings=restart_settings,
         )
 
-    assert (
-        exc_info.value.decision.reason_code
-        == "deployment_not_globally_allowed"
-    )
+    assert exc_info.value.decision.reason_code == "deployment_not_globally_allowed"
 
-    call_kwargs = (
-        mock_authorize_deployment_restart
-        .call_args.kwargs
-    )
+    call_kwargs = mock_authorize_deployment_restart.call_args.kwargs
 
     assert call_kwargs["phase"] == "execution"
 
-    assert (
-        call_kwargs["approval_state"]
-        == "approved"
-    )
+    assert call_kwargs["approval_state"] == "approved"
 
     assert call_kwargs["namespace"] == "dev"
 
-    assert (
-        call_kwargs["deployment_name"]
-        == "payment-api"
-    )
+    assert call_kwargs["deployment_name"] == "payment-api"
 
-    assert (
-        call_kwargs["writes_enabled"]
-        is True
-    )
+    assert call_kwargs["writes_enabled"] is True
 
-    assert (
-        call_kwargs["allowed_namespaces"]
-        == "dev"
-    )
+    assert call_kwargs["allowed_namespaces"] == "dev"
 
-    assert (
-        call_kwargs["allowed_deployments"]
-        == "some-other-deployment"
-    )
+    assert call_kwargs["allowed_deployments"] == "some-other-deployment"
 
     assert call_kwargs["session"] is db_session
 
-    assert (
-        call_kwargs["subject"].username
-        == restart_admin_user.username
-    )
+    assert call_kwargs["subject"].username == restart_admin_user.username
 
     mock_restart_deployment.assert_not_called()
 
 
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "restart_deployment"
-)
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "get_deployment_state"
-)
+@patch("ai_it_support_assistant.services.action_execution_service.restart_deployment")
+@patch("ai_it_support_assistant.services.action_execution_service.get_deployment_state")
 def test_restart_does_not_patch_when_deployment_disappears(
     mock_get_deployment_state,
     mock_restart_deployment,
@@ -1129,18 +950,12 @@ def test_restart_does_not_patch_when_deployment_disappears(
     approved_restart_action,
 ):
     monkeypatch.setattr(
-        "ai_it_support_assistant.services."
-        "action_execution_service."
-        "authorize_deployment_restart",
-        lambda **kwargs: (
-            allowed_restart_execution_decision()
-        ),
+        "ai_it_support_assistant.services.action_execution_service.authorize_deployment_restart",
+        lambda **kwargs: allowed_restart_execution_decision(),
     )
 
-    mock_get_deployment_state.side_effect = (
-        KubernetesResourceNotFoundError(
-            "Deployment was not found."
-        )
+    mock_get_deployment_state.side_effect = KubernetesResourceNotFoundError(
+        "Deployment was not found."
     )
 
     worker_id = claim_for_test(
@@ -1148,14 +963,10 @@ def test_restart_does_not_patch_when_deployment_disappears(
         action=approved_restart_action,
     )
 
-    with pytest.raises(
-        KubernetesResourceNotFoundError
-    ):
+    with pytest.raises(KubernetesResourceNotFoundError):
         execute_claimed_restart_action(
             session=db_session,
-            approval_id=(
-                approved_restart_action.approval_id
-            ),
+            approval_id=(approved_restart_action.approval_id),
             current_user=restart_admin_user,
             worker_id=worker_id,
             settings=restart_settings,
@@ -1163,16 +974,9 @@ def test_restart_does_not_patch_when_deployment_disappears(
 
     mock_restart_deployment.assert_not_called()
 
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "create_incident"
-)
-@patch(
-    "ai_it_support_assistant.services."
-    "action_execution_service."
-    "authorize_incident_create"
-)
+
+@patch("ai_it_support_assistant.services.action_execution_service.create_incident")
+@patch("ai_it_support_assistant.services.action_execution_service.authorize_incident_create")
 def test_incident_policy_is_rechecked_before_execution(
     mock_authorize_incident_create,
     mock_create_incident,
@@ -1180,17 +984,12 @@ def test_incident_policy_is_rechecked_before_execution(
     approved_action,
     current_user,
 ):
-    mock_authorize_incident_create.return_value = (
-        PolicyDecision(
-            allowed=False,
-            reason_code="missing_permission",
-            reason=(
-                "Required capability permission "
-                "is missing."
-            ),
-            policy_id="global-permission-v1",
-            obligations=[],
-        )
+    mock_authorize_incident_create.return_value = PolicyDecision(
+        allowed=False,
+        reason_code="missing_permission",
+        reason=("Required capability permission is missing."),
+        policy_id="global-permission-v1",
+        obligations=[],
     )
 
     worker_id = claim_for_test(
@@ -1198,33 +997,20 @@ def test_incident_policy_is_rechecked_before_execution(
         action=approved_action,
     )
 
-    with pytest.raises(
-        AuthorizationDeniedError
-    ) as exc_info:
+    with pytest.raises(AuthorizationDeniedError) as exc_info:
         execute_claimed_incident_action(
             session=db_session,
-            approval_id=(
-                approved_action.approval_id
-            ),
+            approval_id=(approved_action.approval_id),
             current_user=current_user,
             worker_id=worker_id,
         )
 
-    assert (
-        exc_info.value.decision.reason_code
-        == "missing_permission"
-    )
+    assert exc_info.value.decision.reason_code == "missing_permission"
 
-    call_kwargs = (
-        mock_authorize_incident_create
-        .call_args.kwargs
-    )
+    call_kwargs = mock_authorize_incident_create.call_args.kwargs
 
     assert call_kwargs["phase"] == "execution"
-    assert (
-        call_kwargs["approval_state"]
-        == "approved"
-    )
+    assert call_kwargs["approval_state"] == "approved"
 
     assert call_kwargs["session"] is db_session
 

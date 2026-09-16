@@ -103,15 +103,14 @@ def test_agent_maps_authorization_denied_error_to_403() -> None:
         ):
             response = client.post(
                 "/api/v1/agent/ask",
-                json={
-                    "question": "Is vpn-gateway healthy right now?"
-                },
+                json={"question": "Is vpn-gateway healthy right now?"},
             )
 
         assert response.status_code == 403
 
     finally:
         app.dependency_overrides.clear()
+
 
 def test_agent_maps_unknown_service_to_404() -> None:
     app.dependency_overrides[get_current_user] = _override_it_support_user
@@ -165,21 +164,18 @@ def test_agent_rejects_empty_question() -> None:
     finally:
         app.dependency_overrides.clear()
 
+
 def test_agent_maps_policy_evaluation_error_to_503() -> None:
     app.dependency_overrides[get_current_user] = _override_reader_user
 
     try:
         with patch(
             "ai_it_support_assistant.api.routes.agent.handle_agent_request",
-            side_effect=PolicyEvaluationError(
-                "Policy evaluation failed."
-            ),
+            side_effect=PolicyEvaluationError("Policy evaluation failed."),
         ):
             response = client.post(
                 "/api/v1/agent/ask",
-                json={
-                    "question": "Is vpn-gateway healthy right now?"
-                },
+                json={"question": "Is vpn-gateway healthy right now?"},
             )
 
         assert response.status_code == 503

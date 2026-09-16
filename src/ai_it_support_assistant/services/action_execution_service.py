@@ -316,9 +316,7 @@ def execute_claimed_incident_action(
     #
     # Re-authorize using the user's CURRENT roles.
     #
-    subject = build_policy_subject(
-        current_user
-    )
+    subject = build_policy_subject(current_user)
 
     policy_decision = authorize_incident_create(
         subject=subject,
@@ -327,9 +325,7 @@ def execute_claimed_incident_action(
         session=session,
     )
 
-    enforce_policy(
-        policy_decision
-    )
+    enforce_policy(policy_decision)
 
     #
     # Idempotent read-after-success behavior.
@@ -552,31 +548,21 @@ def execute_claimed_restart_action(
         execution_error_type=(KubernetesRestartExecutionError),
     )
 
-    subject = build_policy_subject(
-        current_user
-    )
+    subject = build_policy_subject(current_user)
 
     policy_decision = authorize_deployment_restart(
         subject=subject,
         namespace=payload.namespace,
         deployment_name=payload.name,
         phase="execution",
-        writes_enabled=(
-            settings.kubernetes_write_enabled
-        ),
-        allowed_namespaces=(
-            settings.kubernetes_restart_allowed_namespaces
-        ),
-        allowed_deployments=(
-            settings.kubernetes_restart_allowed_deployments
-        ),
+        writes_enabled=(settings.kubernetes_write_enabled),
+        allowed_namespaces=(settings.kubernetes_restart_allowed_namespaces),
+        allowed_deployments=(settings.kubernetes_restart_allowed_deployments),
         approval_state="approved",
         session=session,
     )
 
-    enforce_policy(
-        policy_decision
-    )
+    enforce_policy(policy_decision)
     get_deployment_state(
         name=payload.name,
         namespace=payload.namespace,

@@ -56,9 +56,7 @@ def register_mcp_capabilities(
         """Read the current health of a known service."""
         current_user = current_user_provider()
 
-        subject = build_policy_subject(
-            current_user
-        )
+        subject = build_policy_subject(current_user)
 
         with SessionLocal() as session:
             policy_decision = authorize_service_status_read(
@@ -85,9 +83,7 @@ def register_mcp_capabilities(
 
         settings = get_settings()
 
-        subject = build_policy_subject(
-            current_user
-        )
+        subject = build_policy_subject(current_user)
 
         with SessionLocal() as session:
             policy_decision = authorize_kubernetes_read(

@@ -471,21 +471,15 @@ def test_policy_allow_is_audited(
 
     event = db_session.scalar(
         select(AuditEventModel)
-        .where(
-            AuditEventModel.event_type
-            == "POLICY_DECISION"
-        )
-        .order_by(
-            AuditEventModel.created_at.desc()
-        )
+        .where(AuditEventModel.event_type == "POLICY_DECISION")
+        .order_by(AuditEventModel.created_at.desc())
     )
 
     assert event is not None
     assert event.actor == "support"
-    assert event.action_type == (
-        "service_status.read"
-    )
+    assert event.action_type == ("service_status.read")
     assert event.resource_id == "payment-api"
+
 
 def test_policy_deny_is_audited(
     db_session,
@@ -513,20 +507,14 @@ def test_policy_deny_is_audited(
 
     event = db_session.scalar(
         select(AuditEventModel)
-        .where(
-            AuditEventModel.event_type
-            == "POLICY_DECISION"
-        )
-        .order_by(
-            AuditEventModel.created_at.desc()
-        )
+        .where(AuditEventModel.event_type == "POLICY_DECISION")
+        .order_by(AuditEventModel.created_at.desc())
     )
 
     assert event is not None
     assert event.actor == "reader"
-    assert event.action_type == (
-        "deployment.restart"
-    )
+    assert event.action_type == ("deployment.restart")
+
 
 def test_policy_evaluation_failure_is_logged(
     monkeypatch,
@@ -558,23 +546,16 @@ def test_policy_evaluation_failure_is_logged(
         raise OperationalError(
             statement=None,
             params=None,
-            orig=Exception(
-                "database unavailable"
-            ),
+            orig=Exception("database unavailable"),
         )
 
     monkeypatch.setattr(
-        (
-            "ai_it_support_assistant.services."
-            "policy_service._evaluate_policy"
-        ),
+        ("ai_it_support_assistant.services.policy_service._evaluate_policy"),
         fail_policy,
     )
 
     with caplog.at_level(logging.ERROR):
-        with pytest.raises(
-            PolicyEvaluationError
-        ):
+        with pytest.raises(PolicyEvaluationError):
             evaluate_policy(
                 request=request,
                 session=db_session,

@@ -32,9 +32,7 @@ def read_service_status(
     session: Session = Depends(get_db),
 ):
     try:
-        subject = build_policy_subject(
-            current_user
-        )
+        subject = build_policy_subject(current_user)
 
         decision = authorize_service_status_read(
             subject=subject,
@@ -42,9 +40,7 @@ def read_service_status(
             session=session,
         )
 
-        enforce_policy(
-            decision
-        )
+        enforce_policy(decision)
 
     except AuthorizationDeniedError as exc:
         raise HTTPException(
@@ -58,7 +54,4 @@ def read_service_status(
             detail="Authorization service is temporarily unavailable.",
         ) from exc
 
-
-    return get_service_status(
-        service_name
-    )
+    return get_service_status(service_name)

@@ -760,26 +760,17 @@ def test_mcp_kubernetes_state_checks_policy(
         }
 
     monkeypatch.setattr(
-        (
-            "ai_it_support_assistant.mcp_server.server."
-            "authorize_kubernetes_read"
-        ),
+        ("ai_it_support_assistant.mcp_server.server.authorize_kubernetes_read"),
         fake_authorize_kubernetes_read,
     )
 
     monkeypatch.setattr(
-        (
-            "ai_it_support_assistant.mcp_server.server."
-            "get_kubernetes_resource_state"
-        ),
+        ("ai_it_support_assistant.mcp_server.server.get_kubernetes_resource_state"),
         fake_get_kubernetes_resource_state,
     )
 
     monkeypatch.setattr(
-        (
-            "ai_it_support_assistant.mcp_server.server."
-            "SessionLocal"
-        ),
+        ("ai_it_support_assistant.mcp_server.server.SessionLocal"),
         fake_session_local,
     )
 

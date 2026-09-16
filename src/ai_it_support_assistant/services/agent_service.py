@@ -107,26 +107,19 @@ def handle_agent_request(
         )
 
     if decision.action == "live_status":
-
         if decision.service_name is None:
             raise AgentRoutingError("Missing service name.")
 
-        subject = build_policy_subject(
-            current_user
+        subject = build_policy_subject(current_user)
+
+        policy_decision = authorize_service_status_read(
+            subject=subject,
+            service_name=decision.service_name,
+            session=session,
         )
 
-        policy_decision = (
-            authorize_service_status_read(
-                subject=subject,
-                service_name=decision.service_name,
-                session=session,
-            )
-        )
+        enforce_policy(policy_decision)
 
-        enforce_policy(
-            policy_decision
-        )
-        
         logger.info(
             "tool_execution_started request_id=%s tool=live_status",
             get_request_id(),
@@ -158,25 +151,17 @@ def handle_agent_request(
 
         namespace = decision.kubernetes_namespace or kubernetes_default_namespace
 
-        subject = build_policy_subject(
-            current_user
-        )
+        subject = build_policy_subject(current_user)
 
         policy_decision = authorize_kubernetes_read(
             subject=subject,
             namespace=namespace,
-            resource_type=(
-                decision.kubernetes_resource_type
-            ),
-            resource_name=(
-                decision.kubernetes_resource_name
-            ),
+            resource_type=(decision.kubernetes_resource_type),
+            resource_name=(decision.kubernetes_resource_name),
             session=session,
         )
 
-        enforce_policy(
-            policy_decision
-        )
+        enforce_policy(policy_decision)
 
         logger.info(
             (
@@ -230,21 +215,14 @@ def handle_agent_request(
         )
 
     if decision.action == "create_incident":
-
         if decision.incident_title is None:
-            raise AgentRoutingError(
-                "Incident title is required."
-            )
+            raise AgentRoutingError("Incident title is required.")
 
         if decision.incident_description is None:
-            raise AgentRoutingError(
-                "Incident description is required."
-            )
+            raise AgentRoutingError("Incident description is required.")
 
         if decision.incident_severity is None:
-            raise AgentRoutingError(
-                "Incident severity is required."
-            )
+            raise AgentRoutingError("Incident severity is required.")
 
         subject = build_policy_subject(current_user)
 
@@ -257,7 +235,7 @@ def handle_agent_request(
 
         enforce_policy(policy_decision)
         service_status = None
-        
+
         evidence_text = "No live service evidence was available."
 
         if decision.service_name:

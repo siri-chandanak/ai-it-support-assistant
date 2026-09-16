@@ -26,6 +26,7 @@ from ai_it_support_assistant.services.policy_audit_service import (
 
 logger = logging.getLogger(__name__)
 
+
 class PolicyEvaluationError(Exception):
     pass
 
@@ -66,10 +67,8 @@ def evaluate_policy(
             request.resource.resource_id,
         )
 
-        raise PolicyEvaluationError(
-            "Policy data could not be loaded."
-        ) from exc
-    
+        raise PolicyEvaluationError("Policy data could not be loaded.") from exc
+
 
 def _evaluate_policy(
     *,

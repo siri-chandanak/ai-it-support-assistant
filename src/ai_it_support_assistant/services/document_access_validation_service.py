@@ -15,18 +15,11 @@ def validate_allowed_roles(
     normalized_roles = sorted(set(roles))
 
     if not normalized_roles:
-        raise AuthorizationConfigurationError(
-            "Document must allow at least one role."
-        )
+        raise AuthorizationConfigurationError("Document must allow at least one role.")
 
-    invalid_roles = (
-        set(normalized_roles)
-        - VALID_ROLES
-    )
+    invalid_roles = set(normalized_roles) - VALID_ROLES
 
     if invalid_roles:
-        raise AuthorizationConfigurationError(
-            "Document contains invalid roles."
-        )
+        raise AuthorizationConfigurationError("Document contains invalid roles.")
 
     return normalized_roles

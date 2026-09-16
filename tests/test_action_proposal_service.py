@@ -42,6 +42,7 @@ def make_user(
         disabled=False,
     )
 
+
 def allowed_restart_decision() -> PolicyDecision:
     return PolicyDecision(
         allowed=True,
@@ -55,6 +56,7 @@ def allowed_restart_decision() -> PolicyDecision:
         ],
     )
 
+
 def allowed_incident_proposal_decision() -> PolicyDecision:
     return PolicyDecision(
         allowed=True,
@@ -67,6 +69,7 @@ def allowed_incident_proposal_decision() -> PolicyDecision:
         ],
     )
 
+
 def test_prepare_incident_action_creates_pending_action(
     monkeypatch,
 ):
@@ -77,10 +80,7 @@ def test_prepare_incident_action_creates_pending_action(
 
     request = IncidentCreateRequest(
         title="VPN authentication degradation",
-        description=(
-            "Multiple users are reporting elevated "
-            "authentication latency."
-        ),
+        description=("Multiple users are reporting elevated authentication latency."),
         severity="medium",
         service_name="vpn-gateway",
     )
@@ -104,20 +104,12 @@ def test_prepare_incident_action_creates_pending_action(
         return FakePendingAction()
 
     monkeypatch.setattr(
-        (
-            "ai_it_support_assistant.services."
-            "action_proposal_service."
-            "create_pending_incident_action"
-        ),
+        ("ai_it_support_assistant.services.action_proposal_service.create_pending_incident_action"),
         fake_create_pending_incident_action,
     )
 
     monkeypatch.setattr(
-        (
-            "ai_it_support_assistant.services."
-            "action_proposal_service."
-            "authorize_incident_create"
-        ),
+        ("ai_it_support_assistant.services.action_proposal_service.authorize_incident_create"),
         lambda **kwargs: PolicyDecision(
             allowed=True,
             reason_code="allowed",
@@ -156,50 +148,32 @@ def test_prepare_incident_action_rejects_reader(
 
     request = IncidentCreateRequest(
         title="VPN authentication degradation",
-        description=(
-            "Multiple users are reporting elevated "
-            "authentication latency."
-        ),
+        description=("Multiple users are reporting elevated authentication latency."),
         severity="medium",
         service_name="vpn-gateway",
     )
 
     monkeypatch.setattr(
-        (
-            "ai_it_support_assistant.services."
-            "action_proposal_service."
-            "authorize_incident_create"
-        ),
+        ("ai_it_support_assistant.services.action_proposal_service.authorize_incident_create"),
         lambda **kwargs: PolicyDecision(
             allowed=False,
             reason_code="missing_permission",
-            reason=(
-                "Required capability permission "
-                "is missing."
-            ),
+            reason=("Required capability permission is missing."),
             policy_id="global-permission-v1",
             obligations=[],
         ),
     )
 
-    with pytest.raises(
-        AuthorizationDeniedError
-    ) as exc_info:
+    with pytest.raises(AuthorizationDeniedError) as exc_info:
         prepare_incident_action(
             session=object(),
             current_user=user,
             request=request,
         )
 
-    assert (
-        exc_info.value.decision.reason_code
-        == "missing_permission"
-    )
+    assert exc_info.value.decision.reason_code == "missing_permission"
 
-    assert (
-        exc_info.value.decision.policy_id
-        == "global-permission-v1"
-    )
+    assert exc_info.value.decision.policy_id == "global-permission-v1"
 
 
 def test_prepare_restart_action_creates_pending_action(
@@ -210,9 +184,7 @@ def test_prepare_restart_action_creates_pending_action(
         roles=["admin"],
     )
     monkeypatch.setattr(
-        "ai_it_support_assistant.services."
-        "action_proposal_service."
-        "authorize_deployment_restart",
+        "ai_it_support_assistant.services.action_proposal_service.authorize_deployment_restart",
         lambda **kwargs: allowed_restart_decision(),
     )
 
@@ -311,51 +283,32 @@ def test_prepare_restart_action_rejects_non_admin(
     )
 
     monkeypatch.setattr(
-        (
-            "ai_it_support_assistant.services."
-            "action_proposal_service."
-            "authorize_deployment_restart"
-        ),
+        ("ai_it_support_assistant.services.action_proposal_service.authorize_deployment_restart"),
         lambda **kwargs: PolicyDecision(
             allowed=False,
             reason_code="missing_permission",
-            reason=(
-                "Required capability permission "
-                "is missing."
-            ),
+            reason=("Required capability permission is missing."),
             policy_id="global-permission-v1",
             obligations=[],
         ),
     )
 
-    with pytest.raises(
-        AuthorizationDeniedError
-    ) as exc_info:
+    with pytest.raises(AuthorizationDeniedError) as exc_info:
         prepare_restart_action(
             session=object(),
             current_user=user,
             deployment_name="demo-api",
             namespace="ai-it-support-test",
             kubernetes_write_enabled=True,
-            kubernetes_restart_allowed_namespaces=(
-                "ai-it-support-test"
-            ),
-            kubernetes_restart_allowed_deployments=(
-                "demo-api"
-            ),
+            kubernetes_restart_allowed_namespaces=("ai-it-support-test"),
+            kubernetes_restart_allowed_deployments=("demo-api"),
             kubernetes_config_mode="local",
             kubernetes_context="kind-kin",
         )
 
-    assert (
-        exc_info.value.decision.reason_code
-        == "missing_permission"
-    )
+    assert exc_info.value.decision.reason_code == "missing_permission"
 
-    assert (
-        exc_info.value.decision.policy_id
-        == "global-permission-v1"
-    )
+    assert exc_info.value.decision.policy_id == "global-permission-v1"
 
 
 def test_prepare_restart_action_rejects_zero_replicas(
@@ -367,9 +320,7 @@ def test_prepare_restart_action_rejects_zero_replicas(
     )
 
     monkeypatch.setattr(
-        "ai_it_support_assistant.services."
-        "action_proposal_service."
-        "authorize_deployment_restart",
+        "ai_it_support_assistant.services.action_proposal_service.authorize_deployment_restart",
         lambda **kwargs: allowed_restart_decision(),
     )
 
@@ -430,9 +381,7 @@ def test_prepare_restart_action_adds_single_replica_warning(
     )
 
     monkeypatch.setattr(
-        "ai_it_support_assistant.services."
-        "action_proposal_service."
-        "authorize_deployment_restart",
+        "ai_it_support_assistant.services.action_proposal_service.authorize_deployment_restart",
         lambda **kwargs: allowed_restart_decision(),
     )
 

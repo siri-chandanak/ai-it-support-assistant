@@ -87,6 +87,7 @@ def build_pending_incident_action(
         failure_reason=None,
     )
 
+
 def allowed_restart_reconciliation_decision() -> PolicyDecision:
     return PolicyDecision(
         allowed=True,
@@ -611,22 +612,10 @@ def test_only_one_worker_can_reclaim_stale_action(
     assert final_action.worker_id == "worker-A"
 
 
-@patch(
-    "ai_it_support_assistant.worker.action_worker."
-    "authorize_incident_create"
-)
-@patch(
-    "ai_it_support_assistant.worker.action_worker."
-    "load_and_authorize_action_user"
-)
-@patch(
-    "ai_it_support_assistant.worker.action_worker."
-    "create_incident"
-)
-@patch(
-    "ai_it_support_assistant.worker.action_worker."
-    "get_incident_by_idempotency_key"
-)
+@patch("ai_it_support_assistant.worker.action_worker.authorize_incident_create")
+@patch("ai_it_support_assistant.worker.action_worker.load_and_authorize_action_user")
+@patch("ai_it_support_assistant.worker.action_worker.create_incident")
+@patch("ai_it_support_assistant.worker.action_worker.get_incident_by_idempotency_key")
 def test_stale_incident_reuses_existing_incident(
     mock_get_incident: Mock,
     mock_create_incident: Mock,
@@ -635,9 +624,7 @@ def test_stale_incident_reuses_existing_incident(
     db_session,
     settings,
 ) -> None:
-    approval_id = (
-        f"APR-STALE-{uuid4().hex[:8].upper()}"
-    )
+    approval_id = f"APR-STALE-{uuid4().hex[:8].upper()}"
 
     action = build_pending_incident_action(
         approval_id=approval_id,
@@ -687,23 +674,17 @@ def test_stale_incident_reuses_existing_incident(
 
     mock_load_user.return_value = current_user
 
-    mock_authorize_incident_create.return_value = (
-        PolicyDecision(
-            allowed=True,
-            reason_code="allowed",
-            reason=(
-                "Incident reconciliation allowed."
-            ),
-            policy_id="incident-create-v1",
-            obligations=[
-                "audit_execution",
-            ],
-        )
+    mock_authorize_incident_create.return_value = PolicyDecision(
+        allowed=True,
+        reason_code="allowed",
+        reason=("Incident reconciliation allowed."),
+        policy_id="incident-create-v1",
+        obligations=[
+            "audit_execution",
+        ],
     )
 
-    mock_get_incident.return_value = (
-        "INC-EXISTING-1"
-    )
+    mock_get_incident.return_value = "INC-EXISTING-1"
 
     reconcile_stale_incident_action(
         action=stale_action,
@@ -714,37 +695,19 @@ def test_stale_incident_reuses_existing_incident(
     mock_create_incident.assert_not_called()
 
     mock_get_incident.assert_called_once_with(
-        session=(
-            mock_get_incident.call_args
-            .kwargs["session"]
-        ),
-        idempotency_key=(
-            f"create_incident:"
-            f"{action.approval_id}"
-        ),
+        session=(mock_get_incident.call_args.kwargs["session"]),
+        idempotency_key=(f"create_incident:{action.approval_id}"),
     )
 
     mock_authorize_incident_create.assert_called_once()
 
-    call_kwargs = (
-        mock_authorize_incident_create
-        .call_args.kwargs
-    )
+    call_kwargs = mock_authorize_incident_create.call_args.kwargs
 
-    assert (
-        call_kwargs["phase"]
-        == "reconciliation"
-    )
+    assert call_kwargs["phase"] == "reconciliation"
 
-    assert (
-        call_kwargs["approval_state"]
-        is None
-    )
+    assert call_kwargs["approval_state"] is None
 
-    assert (
-        call_kwargs["subject"].username
-        == action.requested_by
-    )
+    assert call_kwargs["subject"].username == action.requested_by
 
     with SessionLocal() as verification_session:
         stored = get_pending_action(
@@ -756,32 +719,14 @@ def test_stale_incident_reuses_existing_incident(
 
         assert stored.state == "succeeded"
 
-        assert (
-            stored.resource_id
-            == "INC-EXISTING-1"
-        )
-        
+        assert stored.resource_id == "INC-EXISTING-1"
 
-@patch(
-    "ai_it_support_assistant.worker.action_worker."
-    "load_and_authorize_action_user"
-)
-@patch(
-    "ai_it_support_assistant.worker.action_worker."
-    "authorize_deployment_restart"
-)
-@patch(
-    "ai_it_support_assistant.worker.action_worker."
-    "monitor_deployment_rollout"
-)
-@patch(
-    "ai_it_support_assistant.worker.action_worker."
-    "restart_deployment"
-)
-@patch(
-    "ai_it_support_assistant.worker.action_worker."
-    "get_deployment_restart_token"
-)
+
+@patch("ai_it_support_assistant.worker.action_worker.load_and_authorize_action_user")
+@patch("ai_it_support_assistant.worker.action_worker.authorize_deployment_restart")
+@patch("ai_it_support_assistant.worker.action_worker.monitor_deployment_rollout")
+@patch("ai_it_support_assistant.worker.action_worker.restart_deployment")
+@patch("ai_it_support_assistant.worker.action_worker.get_deployment_restart_token")
 def test_restart_recovery_does_not_repatch(
     mock_get_token: Mock,
     mock_restart: Mock,
@@ -792,10 +737,7 @@ def test_restart_recovery_does_not_repatch(
     settings,
 ) -> None:
     action = PendingAction(
-        approval_id=(
-            f"APR-RESTART-RECOVERY-"
-            f"{uuid4().hex[:8].upper()}"
-        ),
+        approval_id=(f"APR-RESTART-RECOVERY-{uuid4().hex[:8].upper()}"),
         action="restart_deployment",
         requested_by="admin",
         requested_roles_json='["admin"]',
@@ -836,20 +778,15 @@ def test_restart_recovery_does_not_repatch(
 
     mock_load_user.return_value = current_user
 
-    mock_authorize_deployment_restart.return_value = (
-        PolicyDecision(
-            allowed=True,
-            reason_code="allowed",
-            reason=(
-                "Deployment restart reconciliation "
-                "allowed."
-            ),
-            policy_id="deployment-restart-v1",
-            obligations=[
-                "audit_execution",
-                "verify_rollout",
-            ],
-        )
+    mock_authorize_deployment_restart.return_value = PolicyDecision(
+        allowed=True,
+        reason_code="allowed",
+        reason=("Deployment restart reconciliation allowed."),
+        policy_id="deployment-restart-v1",
+        obligations=[
+            "audit_execution",
+            "verify_rollout",
+        ],
     )
 
     # Kubernetes already contains the persisted token.
@@ -860,9 +797,7 @@ def test_restart_recovery_does_not_repatch(
     rollout_result = Mock()
     rollout_result.outcome = "healthy"
 
-    rollout_result.model_dump_json.return_value = (
-        '{"outcome":"healthy"}'
-    )
+    rollout_result.model_dump_json.return_value = '{"outcome":"healthy"}'
 
     mock_monitor.return_value = rollout_result
 
@@ -876,60 +811,28 @@ def test_restart_recovery_does_not_repatch(
 
     mock_authorize_deployment_restart.assert_called_once()
 
-    policy_kwargs = (
-        mock_authorize_deployment_restart
-        .call_args.kwargs
-    )
+    policy_kwargs = mock_authorize_deployment_restart.call_args.kwargs
 
-    assert (
-        policy_kwargs["phase"]
-        == "reconciliation"
-    )
+    assert policy_kwargs["phase"] == "reconciliation"
 
-    assert (
-        policy_kwargs["approval_state"]
-        is None
-    )
+    assert policy_kwargs["approval_state"] is None
 
     assert policy_kwargs["namespace"] == "dev"
 
-    assert (
-        policy_kwargs["deployment_name"]
-        == "payment-api"
-    )
+    assert policy_kwargs["deployment_name"] == "payment-api"
 
-    assert (
-        policy_kwargs["writes_enabled"]
-        == settings.kubernetes_write_enabled
-    )
+    assert policy_kwargs["writes_enabled"] == settings.kubernetes_write_enabled
 
-    assert (
-        policy_kwargs["allowed_namespaces"]
-        == (
-            settings
-            .kubernetes_restart_allowed_namespaces
-        )
-    )
+    assert policy_kwargs["allowed_namespaces"] == (settings.kubernetes_restart_allowed_namespaces)
 
-    assert (
-        policy_kwargs["allowed_deployments"]
-        == (
-            settings
-            .kubernetes_restart_allowed_deployments
-        )
-    )
+    assert policy_kwargs["allowed_deployments"] == (settings.kubernetes_restart_allowed_deployments)
 
-    assert (
-        policy_kwargs["subject"].username
-        == "admin"
-    )
+    assert policy_kwargs["subject"].username == "admin"
 
     mock_get_token.assert_called_once_with(
         name="payment-api",
         namespace="dev",
-        config_mode=(
-            settings.kubernetes_config_mode
-        ),
+        config_mode=(settings.kubernetes_config_mode),
         context=settings.kubernetes_context,
     )
 
@@ -940,26 +843,12 @@ def test_restart_recovery_does_not_repatch(
 
     mock_monitor.assert_called_once()
 
-@patch(
-    "ai_it_support_assistant.worker.action_worker."
-    "load_and_authorize_action_user"
-)
-@patch(
-    "ai_it_support_assistant.worker.action_worker."
-    "authorize_deployment_restart"
-)
-@patch(
-    "ai_it_support_assistant.worker.action_worker."
-    "monitor_deployment_rollout"
-)
-@patch(
-    "ai_it_support_assistant.worker.action_worker."
-    "restart_deployment"
-)
-@patch(
-    "ai_it_support_assistant.worker.action_worker."
-    "get_deployment_restart_token"
-)
+
+@patch("ai_it_support_assistant.worker.action_worker.load_and_authorize_action_user")
+@patch("ai_it_support_assistant.worker.action_worker.authorize_deployment_restart")
+@patch("ai_it_support_assistant.worker.action_worker.monitor_deployment_rollout")
+@patch("ai_it_support_assistant.worker.action_worker.restart_deployment")
+@patch("ai_it_support_assistant.worker.action_worker.get_deployment_restart_token")
 def test_restart_recovery_reuses_same_token(
     mock_get_token: Mock,
     mock_restart: Mock,
@@ -970,10 +859,7 @@ def test_restart_recovery_reuses_same_token(
     settings,
 ) -> None:
     action = PendingAction(
-        approval_id=(
-            f"APR-RESTART-RECOVERY-"
-            f"{uuid4().hex[:8].upper()}"
-        ),
+        approval_id=(f"APR-RESTART-RECOVERY-{uuid4().hex[:8].upper()}"),
         action="restart_deployment",
         requested_by="admin",
         requested_roles_json='["admin"]',
@@ -1014,20 +900,15 @@ def test_restart_recovery_reuses_same_token(
 
     mock_load_user.return_value = current_user
 
-    mock_authorize_deployment_restart.return_value = (
-        PolicyDecision(
-            allowed=True,
-            reason_code="allowed",
-            reason=(
-                "Deployment restart reconciliation "
-                "allowed."
-            ),
-            policy_id="deployment-restart-v1",
-            obligations=[
-                "audit_execution",
-                "verify_rollout",
-            ],
-        )
+    mock_authorize_deployment_restart.return_value = PolicyDecision(
+        allowed=True,
+        reason_code="allowed",
+        reason=("Deployment restart reconciliation allowed."),
+        policy_id="deployment-restart-v1",
+        obligations=[
+            "audit_execution",
+            "verify_rollout",
+        ],
     )
 
     # Kubernetes does not contain our persisted token.
@@ -1036,9 +917,7 @@ def test_restart_recovery_reuses_same_token(
     rollout_result = Mock()
     rollout_result.outcome = "healthy"
 
-    rollout_result.model_dump_json.return_value = (
-        '{"outcome":"healthy"}'
-    )
+    rollout_result.model_dump_json.return_value = '{"outcome":"healthy"}'
 
     mock_monitor.return_value = rollout_result
 
@@ -1050,27 +929,15 @@ def test_restart_recovery_reuses_same_token(
 
     mock_authorize_deployment_restart.assert_called_once()
 
-    policy_kwargs = (
-        mock_authorize_deployment_restart
-        .call_args.kwargs
-    )
+    policy_kwargs = mock_authorize_deployment_restart.call_args.kwargs
 
-    assert (
-        policy_kwargs["phase"]
-        == "reconciliation"
-    )
+    assert policy_kwargs["phase"] == "reconciliation"
 
-    assert (
-        policy_kwargs["approval_state"]
-        is None
-    )
+    assert policy_kwargs["approval_state"] is None
 
     assert policy_kwargs["namespace"] == "dev"
 
-    assert (
-        policy_kwargs["deployment_name"]
-        == "payment-api"
-    )
+    assert policy_kwargs["deployment_name"] == "payment-api"
 
     #
     # Kubernetes does not have T1,
@@ -1079,9 +946,7 @@ def test_restart_recovery_reuses_same_token(
     #
     mock_restart.assert_called_once()
 
-    restart_kwargs = (
-        mock_restart.call_args.kwargs
-    )
+    restart_kwargs = mock_restart.call_args.kwargs
 
     assert restart_kwargs["name"] == "payment-api"
 
@@ -1091,10 +956,7 @@ def test_restart_recovery_reuses_same_token(
     # Critical idempotency assertion:
     # recovery reuses the existing token.
     #
-    assert (
-        restart_kwargs["execution_token"]
-        == "T1"
-    )
+    assert restart_kwargs["execution_token"] == "T1"
 
     mock_monitor.assert_called_once()
 
