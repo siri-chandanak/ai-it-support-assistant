@@ -92,6 +92,12 @@ class Settings(BaseSettings):
 
     policy_shadow_pdp_enabled: bool = False
 
+    opa_bundle_enabled: bool = False
+    opa_bundle_name: str = "ai-it-support-authz"
+    opa_require_bundle_ready: bool = True
+
+    policy_input_version: str = "1"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

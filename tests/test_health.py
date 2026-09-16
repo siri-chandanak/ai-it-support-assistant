@@ -67,6 +67,7 @@ def test_readiness_returns_503_when_opa_unavailable(
         *,
         opa_url: str,
         timeout_seconds: float,
+        require_bundle_ready: bool = False,
     ) -> None:
         raise ExternalPDPUnavailableError("OPA unavailable.")
 
@@ -78,3 +79,4 @@ def test_readiness_returns_503_when_opa_unavailable(
     response = client.get("/api/v1/ready")
 
     assert response.status_code == 503
+    assert response.json() == {"detail": "Authorization service unavailable."}

@@ -53,6 +53,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --dev
 
+      - name: Install OPA
+        uses: open-policy-agent/setup-opa
+        with:
+          version: v1.17.1
+
+      - name: Verify OPA installation
+        run: opa version
+
       - name: Run lint checks
         run: uv run ruff check .
 
@@ -62,14 +70,49 @@ jobs:
       - name: Run database migrations
         run: uv run alembic upgrade head
 
+      - name: Run tests
+        run: uv run pytest
+
       - name: Check migration drift
         run: uv run alembic check
 
-      - name: Run tests
-        run: uv run pytest
+      - name: Check Rego formatting
+        run: opa fmt --fail opa/bundle opa/tests
+
+      - name: Run Rego tests
+        run: opa test opa/bundle opa/tests -v --fail-on-empty
 
       - name: Seed policy evaluation data
         run: uv run python scripts/seed_policy_evaluation_data.py
 
       - name: Run policy evaluation
         run: uv run python scripts/run_policy_evaluation.py
+
+      - name: Run RAG evaluation
+        run: uv run python scripts/run_rag_evaluation.py
+
+      - name: Run security evaluation
+        run: uv run python scripts/run_security_evaluation.py
+
+      - name: Run agent routing evaluation
+        run: uv run python scripts/evaluate_agent_routing.py
+
+      - name: Prepare OPA bundle metadata
+        env:
+          POLICY_REVISION: ${{ github.sha }}
+          POLICY_VERSION: ${{ github.ref_name }}
+        run: uv run python scripts/build_opa_bundle.py
+
+      - name: Build OPA bundle
+        run: |
+          mkdir -p dist
+          cd opa/bundle
+          opa build \
+            --bundle . \
+            --output ../../dist/ai-it-support-authz.tar.gz
+
+      - name: Inspect OPA bundle
+        run: opa inspect dist/ai-it-support-authz.tar.gz
+
+      - name: Generate OPA bundle checksum
+        run: sha256sum dist/ai-it-support-authz.tar.gz

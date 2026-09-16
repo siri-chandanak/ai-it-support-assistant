@@ -61,6 +61,9 @@ def readiness() -> dict[str, str]:
             check_opa_health(
                 opa_url=settings.opa_url,
                 timeout_seconds=(settings.opa_timeout_seconds),
+                require_bundle_ready=(
+                    settings.opa_bundle_enabled and settings.opa_require_bundle_ready
+                ),
             )
         except ExternalPDPError as exc:
             raise HTTPException(

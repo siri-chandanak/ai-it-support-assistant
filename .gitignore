@@ -28,3 +28,10 @@ Thumbs.db
 data/*
 !data/evaluation/
 data/evaluation/results/
+
+# OPA generated artifacts
+dist/
+
+# Local OPA signing material
+opa-dev-private.pem
+opa-dev-public.pem
