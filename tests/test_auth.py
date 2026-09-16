@@ -10,7 +10,7 @@ from ai_it_support_assistant.services.auth_service import (
     hash_password,
     verify_password,
 )
-from ai_it_support_assistant.services.authorization_service import (
+from ai_it_support_assistant.services.document_access_validation_service import (
     AuthorizationConfigurationError,
     validate_allowed_roles,
 )

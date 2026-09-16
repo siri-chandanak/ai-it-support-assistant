@@ -1,3 +1,4 @@
+import asyncio
 from uuid import uuid4
 
 import pytest
@@ -7,6 +8,7 @@ from ai_it_support_assistant.mcp_server.server import (
     create_mcp_server,
 )
 from ai_it_support_assistant.schemas.auth import User
+from ai_it_support_assistant.schemas.policy import PolicyDecision
 
 
 def make_user(
@@ -687,23 +689,121 @@ async def test_mcp_server_registers_action_resource_template():
     assert "action://{approval_id}" in templates
 
 
-def test_mcp_kubernetes_state_checks_namespace_permission(
+def test_mcp_kubernetes_state_checks_policy(
     monkeypatch,
 ) -> None:
     captured: dict[str, object] = {}
 
-    def fake_require_namespace_permission(
+    user = make_user(
+        username="alice",
+        roles=["it_support"],
+    )
+
+    class FakeSession:
+        pass
+
+    fake_session = FakeSession()
+
+    class FakeSessionContext:
+        def __enter__(self):
+            return fake_session
+
+        def __exit__(
+            self,
+            exc_type,
+            exc,
+            traceback,
+        ) -> None:
+            return None
+
+    def fake_session_local():
+        return FakeSessionContext()
+
+    def fake_authorize_kubernetes_read(
         *,
-        user,
-        permission,
+        subject,
         namespace,
+        resource_type,
+        resource_name,
         session,
-    ) -> None:
-        captured["username"] = user.username
-        captured["permission"] = permission
+    ) -> PolicyDecision:
+        captured["username"] = subject.username
         captured["namespace"] = namespace
+        captured["resource_type"] = resource_type
+        captured["resource_name"] = resource_name
+        captured["session"] = session
+
+        return PolicyDecision(
+            allowed=True,
+            reason_code="allowed",
+            reason="Kubernetes read allowed.",
+            policy_id="kubernetes-read-v1",
+            obligations=[],
+        )
+
+    def fake_get_kubernetes_resource_state(
+        *,
+        resource_type,
+        name,
+        namespace,
+        config_mode,
+        context,
+    ):
+        return {
+            "resource_type": "deployment",
+            "name": name,
+            "namespace": namespace,
+            "desired_replicas": 2,
+            "ready_replicas": 2,
+            "available_replicas": 2,
+            "updated_replicas": 2,
+        }
 
     monkeypatch.setattr(
-        "ai_it_support_assistant.mcp_server.server.require_namespace_permission",
-        fake_require_namespace_permission,
+        (
+            "ai_it_support_assistant.mcp_server.server."
+            "authorize_kubernetes_read"
+        ),
+        fake_authorize_kubernetes_read,
     )
+
+    monkeypatch.setattr(
+        (
+            "ai_it_support_assistant.mcp_server.server."
+            "get_kubernetes_resource_state"
+        ),
+        fake_get_kubernetes_resource_state,
+    )
+
+    monkeypatch.setattr(
+        (
+            "ai_it_support_assistant.mcp_server.server."
+            "SessionLocal"
+        ),
+        fake_session_local,
+    )
+
+    server = create_mcp_server(
+        current_user_provider=lambda: user,
+    )
+
+    async def run_test() -> None:
+        async with Client(server) as client:
+            result = await client.call_tool(
+                "get_kubernetes_state",
+                {
+                    "resource_type": "deployment",
+                    "resource_name": "api",
+                    "namespace": "team-a-dev",
+                },
+            )
+
+        assert result.is_error is False
+
+    asyncio.run(run_test())
+
+    assert captured["username"] == "alice"
+    assert captured["namespace"] == "team-a-dev"
+    assert captured["resource_type"] == "deployment"
+    assert captured["resource_name"] == "api"
+    assert captured["session"] is fake_session

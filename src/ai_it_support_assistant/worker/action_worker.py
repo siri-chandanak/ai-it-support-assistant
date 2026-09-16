@@ -42,9 +42,6 @@ from ai_it_support_assistant.services.action_payload_service import (
     parse_incident_payload,
     parse_restart_payload,
 )
-from ai_it_support_assistant.services.authorization_service import (
-    authorize_tool,
-)
 from ai_it_support_assistant.services.incident_service import (
     create_incident,
 )
@@ -55,8 +52,13 @@ from ai_it_support_assistant.services.kubernetes_rollout_service import (
 from ai_it_support_assistant.services.kubernetes_write_service import (
     restart_deployment,
 )
-from ai_it_support_assistant.services.resource_authorization_service import (
-    require_namespace_permission,
+from ai_it_support_assistant.services.policy_authorization_service import (
+    authorize_deployment_restart,
+    authorize_incident_create,
+    build_policy_subject,
+)
+from ai_it_support_assistant.services.policy_enforcement_service import (
+    enforce_policy,
 )
 
 logger = logging.getLogger(__name__)
@@ -100,62 +102,27 @@ def load_and_authorize_action_user(
         disabled=user.disabled,
     )
 
-    try:
-        authorize_tool(
-            tool_name=action.action,
-            user=current_user,
-        )
-    except Exception as exc:
-        raise ActionAuthorizationError(
-            f"User is no longer authorized to execute action: {action.action}"
-        ) from exc
-
     return current_user
 
 
-def authorize_restart_action(
+def parse_restart_action(
     *,
     action: PendingAction,
-    user: User,
-    settings: Settings,
-    session: Session,
 ) -> RestartActionPayload:
     if action.action != "restart_deployment":
         raise ActionAuthorizationError(
-            f"Restart authorization was requested for a non-restart action: {action.action}"
+            "Restart authorization was requested "
+            f"for a non-restart action: {action.action}"
         )
 
     try:
-        authorize_tool(
-            tool_name="restart_deployment",
-            user=user,
+        payload = parse_restart_payload(
+            action.payload_json
         )
     except Exception as exc:
-        raise ActionAuthorizationError("User is not authorized to restart deployments.") from exc
-
-    try:
-        payload = parse_restart_payload(action.payload_json)
-    except Exception as exc:
-        raise ActionAuthorizationError("Restart action payload is invalid.") from exc
-
-    try:
-        require_namespace_permission(
-            user=user,
-            permission="deployment:restart",
-            namespace=payload.namespace,
-            session=session,
-        )
-    except Exception as exc:
-        raise ActionAuthorizationError("User is no longer authorized for this namespace.") from exc
-
-    if not settings.enable_write_actions:
-        raise ActionAuthorizationError("Write actions are disabled.")
-
-    if payload.namespace not in settings.allowed_restart_namespaces:
-        raise ActionAuthorizationError(f"Namespace is not allowed: {payload.namespace}")
-
-    if payload.name not in settings.allowed_restart_deployments:
-        raise ActionAuthorizationError(f"Deployment is not allowed: {payload.name}")
+        raise ActionAuthorizationError(
+            "Restart action payload is invalid."
+        ) from exc
 
     return payload
 
@@ -166,9 +133,12 @@ def reconcile_stale_incident_action(
     worker_id: str,
     settings: Settings,
 ) -> None:
-    del worker_id  # Reserved for future ownership/audit use.
+    del worker_id
+    del settings
 
-    idempotency_key = f"create_incident:{action.approval_id}"
+    idempotency_key = (
+        f"create_incident:{action.approval_id}"
+    )
 
     with SessionLocal() as session:
         current_action = get_pending_action(
@@ -177,11 +147,42 @@ def reconcile_stale_incident_action(
         )
 
         if current_action is None:
-            raise RuntimeError("Pending action disappeared during reconciliation.")
+            raise RuntimeError(
+                "Pending action disappeared "
+                "during reconciliation."
+            )
 
-        existing_incident_id = get_incident_by_idempotency_key(
+        current_user = load_and_authorize_action_user(
             session=session,
-            idempotency_key=idempotency_key,
+            action=current_action,
+        )
+
+        if current_user is None:
+            raise RuntimeError(
+                "Requesting user could not be loaded "
+                "during reconciliation."
+            )
+
+        subject = build_policy_subject(
+            current_user
+        )
+
+        policy_decision = authorize_incident_create(
+            subject=subject,
+            phase="reconciliation",
+            approval_state=None,
+            session=session,
+        )
+
+        enforce_policy(
+            policy_decision
+        )
+
+        existing_incident_id = (
+            get_incident_by_idempotency_key(
+                session=session,
+                idempotency_key=idempotency_key,
+            )
         )
 
         if existing_incident_id is not None:
@@ -196,7 +197,9 @@ def reconcile_stale_incident_action(
             session.commit()
             return
 
-        payload = parse_incident_payload(current_action.payload_json)
+        payload = parse_incident_payload(
+            current_action.payload_json
+        )
 
         incident = create_incident(
             session=session,
@@ -228,16 +231,13 @@ def execute_claimed_restart_action(
 ) -> None:
     if action is None:
         raise RuntimeError("Pending action disappeared during reconciliation.")
-    current_user = load_and_authorize_action_user(
+    _current_user = load_and_authorize_action_user(
         action=action,
         session=session,
     )
 
-    payload = authorize_restart_action(
+    payload = parse_restart_action(
         action=action,
-        user=current_user,
-        settings=settings,
-        session=session,
     )
 
     def heartbeat() -> None:
@@ -315,46 +315,101 @@ def reconcile_stale_restart_action(
     worker_id: str,
     settings: Settings,
 ) -> None:
+    #
+    # Re-authorize the stale execution using
+    # CURRENT user identity, permissions, configuration,
+    # and resource grants.
+    #
     with SessionLocal() as authorization_session:
         current_user = load_and_authorize_action_user(
             action=action,
             session=authorization_session,
         )
 
-        payload = authorize_restart_action(
-            action=action,
-            user=current_user,
-            settings=settings,
-            session=authorization_session,
+        payload = parse_restart_payload(
+            action.payload_json
         )
 
+        subject = build_policy_subject(
+            current_user
+        )
+
+        policy_decision = (
+            authorize_deployment_restart(
+                subject=subject,
+                namespace=payload.namespace,
+                deployment_name=payload.name,
+                phase="reconciliation",
+                writes_enabled=(
+                    settings.kubernetes_write_enabled
+                ),
+                allowed_namespaces=(
+                    settings
+                    .kubernetes_restart_allowed_namespaces
+                ),
+                allowed_deployments=(
+                    settings
+                    .kubernetes_restart_allowed_deployments
+                ),
+                approval_state=None,
+                session=authorization_session,
+            )
+        )
+
+        enforce_policy(
+            policy_decision
+        )
+
+    #
+    # A stale restart must already have a persisted
+    # execution token.
+    #
+    # Never generate a new token during reconciliation.
+    #
     execution_token = action.execution_token
 
     if execution_token is None:
-        raise RuntimeError("Restart action has no persisted execution token.")
-    payload = parse_restart_payload(action.payload_json)
+        raise RuntimeError(
+            "Restart action has no persisted "
+            "execution token."
+        )
 
-    execution_token = action.execution_token
-
-    if execution_token is None:
-        raise RuntimeError("Restart action has no persisted execution token.")
-
+    #
+    # Check authoritative Kubernetes state.
+    #
+    # If Kubernetes already contains our persisted token,
+    # the original restart was applied and we MUST NOT
+    # issue another patch.
+    #
     current_token = get_deployment_restart_token(
         name=payload.name,
         namespace=payload.namespace,
-        config_mode=settings.kubernetes_config_mode,
+        config_mode=(
+            settings.kubernetes_config_mode
+        ),
         context=settings.kubernetes_context,
     )
 
+    #
+    # The original worker may have crashed before
+    # Kubernetes received the restart patch.
+    #
+    # Reuse the SAME persisted execution token.
+    #
     if current_token != execution_token:
         restart_deployment(
             name=payload.name,
             namespace=payload.namespace,
             execution_token=execution_token,
-            config_mode=settings.kubernetes_config_mode,
+            config_mode=(
+                settings.kubernetes_config_mode
+            ),
             context=settings.kubernetes_context,
         )
 
+    #
+    # Heartbeat callback for long-running reconciliation.
+    #
     def heartbeat() -> None:
         with SessionLocal() as heartbeat_session:
             updated = update_action_heartbeat(
@@ -368,16 +423,33 @@ def reconcile_stale_restart_action(
             else:
                 heartbeat_session.rollback()
 
+    #
+    # Continue monitoring the existing restart.
+    #
     rollout_result = monitor_deployment_rollout(
         name=payload.name,
         namespace=payload.namespace,
-        timeout_seconds=(settings.kubernetes_rollout_timeout_seconds),
-        poll_interval_seconds=(settings.kubernetes_rollout_poll_interval_seconds),
-        max_read_failures=(settings.kubernetes_rollout_max_read_failures),
-        config_mode=(settings.kubernetes_config_mode),
+        timeout_seconds=(
+            settings
+            .kubernetes_rollout_timeout_seconds
+        ),
+        poll_interval_seconds=(
+            settings
+            .kubernetes_rollout_poll_interval_seconds
+        ),
+        max_read_failures=(
+            settings
+            .kubernetes_rollout_max_read_failures
+        ),
+        config_mode=(
+            settings.kubernetes_config_mode
+        ),
         context=settings.kubernetes_context,
     )
 
+    #
+    # Finalize the reclaimed action.
+    #
     with SessionLocal() as session:
         current_action = get_pending_action(
             session=session,
@@ -385,39 +457,64 @@ def reconcile_stale_restart_action(
         )
 
         if current_action is None:
-            raise RuntimeError("Restart action disappeared.")
+            raise RuntimeError(
+                "Restart action disappeared."
+            )
 
-        resource_id = f"{payload.namespace}/{payload.name}"
+        resource_id = (
+            f"{payload.namespace}/{payload.name}"
+        )
 
         if rollout_result.outcome == "healthy":
             mark_action_succeeded(
                 session=session,
-                approval_id=current_action.approval_id,
-                expected_version=current_action.version,
+                approval_id=(
+                    current_action.approval_id
+                ),
+                expected_version=(
+                    current_action.version
+                ),
                 resource_id=resource_id,
-                result_json=(rollout_result.model_dump_json()),
+                result_json=(
+                    rollout_result.model_dump_json()
+                ),
             )
 
         elif rollout_result.outcome == "timeout":
             mark_action_failed(
                 session=session,
-                approval_id=current_action.approval_id,
-                expected_version=current_action.version,
-                failure_reason=("restart_rollout_timeout"),
-                result_json=(rollout_result.model_dump_json()),
+                approval_id=(
+                    current_action.approval_id
+                ),
+                expected_version=(
+                    current_action.version
+                ),
+                failure_reason=(
+                    "restart_rollout_timeout"
+                ),
+                result_json=(
+                    rollout_result.model_dump_json()
+                ),
             )
 
         else:
             mark_action_failed(
                 session=session,
-                approval_id=current_action.approval_id,
-                expected_version=current_action.version,
-                failure_reason=("restart_rollout_failed"),
-                result_json=(rollout_result.model_dump_json()),
+                approval_id=(
+                    current_action.approval_id
+                ),
+                expected_version=(
+                    current_action.version
+                ),
+                failure_reason=(
+                    "restart_rollout_failed"
+                ),
+                result_json=(
+                    rollout_result.model_dump_json()
+                ),
             )
 
         session.commit()
-
 
 def execute_claimed_action(
     *,

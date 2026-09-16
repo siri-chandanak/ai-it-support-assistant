@@ -31,14 +31,16 @@ from ai_it_support_assistant.services.kubernetes_state_service import (
 from ai_it_support_assistant.services.live_status_service import (
     get_live_service_status,
 )
-from ai_it_support_assistant.services.resource_authorization_service import (
-    require_namespace_permission,
+from ai_it_support_assistant.services.policy_authorization_service import (
+    authorize_kubernetes_read,
+    authorize_service_status_read,
+    build_policy_subject,
+)
+from ai_it_support_assistant.services.policy_enforcement_service import (
+    enforce_policy,
 )
 from ai_it_support_assistant.services.retrieval_service import (
     retrieve_chunks,
-)
-from ai_it_support_assistant.services.tool_authorization_service import (
-    authorize_tool,
 )
 
 
@@ -54,10 +56,18 @@ def register_mcp_capabilities(
         """Read the current health of a known service."""
         current_user = current_user_provider()
 
-        authorize_tool(
-            tool_name="live_status",
-            user=current_user,
+        subject = build_policy_subject(
+            current_user
         )
+
+        with SessionLocal() as session:
+            policy_decision = authorize_service_status_read(
+                subject=subject,
+                service_name=service_name,
+                session=session,
+            )
+
+            enforce_policy(policy_decision)
 
         result = get_live_service_status(
             service_name=service_name,
@@ -73,20 +83,22 @@ def register_mcp_capabilities(
     ) -> dict[str, object]:
         current_user = current_user_provider()
 
-        authorize_tool(
-            tool_name="kubernetes_state",
-            user=current_user,
+        settings = get_settings()
+
+        subject = build_policy_subject(
+            current_user
         )
 
         with SessionLocal() as session:
-            require_namespace_permission(
-                user=current_user,
-                permission="kubernetes:read",
+            policy_decision = authorize_kubernetes_read(
+                subject=subject,
                 namespace=namespace,
+                resource_type=resource_type,
+                resource_name=resource_name,
                 session=session,
             )
 
-        settings = get_settings()
+            enforce_policy(policy_decision)
 
         result = get_kubernetes_resource_state(
             resource_type=resource_type,
@@ -96,7 +108,7 @@ def register_mcp_capabilities(
             context=settings.kubernetes_context,
         )
 
-        return result.model_dump()
+        return result
 
     @server.tool()
     def search_knowledge(

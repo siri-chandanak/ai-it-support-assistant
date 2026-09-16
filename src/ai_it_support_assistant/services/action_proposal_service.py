@@ -14,18 +14,19 @@ from ai_it_support_assistant.services.approval_service import (
     create_pending_action,
     create_pending_incident_action,
 )
+from ai_it_support_assistant.services.kubernetes_restart_validation_service import (
+    KubernetesRestartValidationError,
+)
 from ai_it_support_assistant.services.kubernetes_state_service import (
     get_deployment_state,
 )
-from ai_it_support_assistant.services.kubernetes_write_policy_service import (
-    KubernetesWritePolicyError,
-    validate_restart_policy,
+from ai_it_support_assistant.services.policy_authorization_service import (
+    authorize_deployment_restart,
+    authorize_incident_create,
+    build_policy_subject,
 )
-from ai_it_support_assistant.services.resource_authorization_service import (
-    require_namespace_permission,
-)
-from ai_it_support_assistant.services.tool_authorization_service import (
-    authorize_tool,
+from ai_it_support_assistant.services.policy_enforcement_service import (
+    enforce_policy,
 )
 
 
@@ -40,10 +41,16 @@ def prepare_incident_action(
     This function creates a pending action only.
     It does not create the incident itself.
     """
-    authorize_tool(
-        tool_name="create_incident",
-        user=current_user,
+
+    subject = build_policy_subject(current_user)
+
+    policy_decision = authorize_incident_create(
+        subject=subject,
+        phase="proposal",
+        session=session,
     )
+
+    enforce_policy(policy_decision)
 
     pending = create_pending_incident_action(
         session=session,
@@ -71,24 +78,37 @@ def prepare_restart_action(
     This function creates a pending action only.
     It does not restart the Deployment.
     """
-    authorize_tool(
-        tool_name="restart_deployment",
-        user=current_user,
+    subject = build_policy_subject(
+        current_user
     )
 
-    require_namespace_permission(
-        user=current_user,
-        permission="deployment:restart",
+    policy_decision = authorize_deployment_restart(
+        subject=subject,
         namespace=namespace,
+        deployment_name=deployment_name,
+        phase="proposal",
+        writes_enabled=kubernetes_write_enabled,
+        allowed_namespaces=[
+            value.strip()
+            for value in (
+                kubernetes_restart_allowed_namespaces
+                or ""
+            ).split(",")
+            if value.strip()
+        ],
+        allowed_deployments=[
+            value.strip()
+            for value in (
+                kubernetes_restart_allowed_deployments
+                or ""
+            ).split(",")
+            if value.strip()
+        ],
         session=session,
     )
 
-    validate_restart_policy(
-        namespace=namespace,
-        deployment_name=deployment_name,
-        write_enabled=kubernetes_write_enabled,
-        allowed_namespaces_raw=(kubernetes_restart_allowed_namespaces),
-        allowed_deployments_raw=(kubernetes_restart_allowed_deployments),
+    enforce_policy(
+        policy_decision
     )
 
     deployment_state = get_deployment_state(
@@ -99,7 +119,7 @@ def prepare_restart_action(
     )
 
     if deployment_state.desired_replicas == 0:
-        raise KubernetesWritePolicyError(
+        raise KubernetesRestartValidationError(
             "Cannot propose restart for a Deployment with zero desired replicas."
         )
 

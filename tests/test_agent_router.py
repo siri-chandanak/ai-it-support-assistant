@@ -1,19 +1,13 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
-from uuid import UUID
 
 import pytest
 
 from ai_it_support_assistant.schemas.agent import AgentDecision
-from ai_it_support_assistant.schemas.auth import User
 from ai_it_support_assistant.services.agent_router_service import (
     AgentRoutingError,
     route_agent_request,
     validate_agent_decision,
-)
-from ai_it_support_assistant.services.tool_authorization_service import (
-    ToolAuthorizationError,
-    authorize_tool,
 )
 
 
@@ -425,47 +419,3 @@ def test_restart_deployment_rejects_incident_fields():
         match="cannot include incident",
     ):
         validate_agent_decision(decision)
-
-
-def test_reader_cannot_restart_deployment():
-    user = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000001"),
-        username="reader",
-        roles=["reader"],
-        disabled=False,
-    )
-
-    with pytest.raises(ToolAuthorizationError):
-        authorize_tool(
-            tool_name="restart_deployment",
-            user=user,
-        )
-
-
-def test_admin_can_request_restart_deployment():
-    user = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000002"),
-        username="admin",
-        roles=["admin"],
-        disabled=False,
-    )
-
-    authorize_tool(
-        tool_name="restart_deployment",
-        user=user,
-    )
-
-
-def test_it_support_cannot_restart_deployment():
-    user = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000003"),
-        username="it-support",
-        roles=["it_support"],
-        disabled=False,
-    )
-
-    with pytest.raises(ToolAuthorizationError):
-        authorize_tool(
-            tool_name="restart_deployment",
-            user=user,
-        )

@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
 
 from ai_it_support_assistant.api.middleware.request_context import (
     RequestContextMiddleware,
@@ -11,12 +12,45 @@ from ai_it_support_assistant.api.routes.health import router as health_router
 from ai_it_support_assistant.api.routes.incidents import router as incidents_router
 from ai_it_support_assistant.api.routes.rag import router as rag_router
 from ai_it_support_assistant.api.routes.retrieval import router as retrieval_router
+from ai_it_support_assistant.api.routes.service_status import (
+    router as service_status_router,
+)
 from ai_it_support_assistant.cache.cache_service import (
     configure_embedding_cache,
     configure_retrieval_cache,
 )
 from ai_it_support_assistant.core.config import get_settings
 from ai_it_support_assistant.core.logging import configure_logging
+from ai_it_support_assistant.services.policy_enforcement_service import (
+    AuthorizationDeniedError,
+)
+from ai_it_support_assistant.services.policy_service import (
+    PolicyEvaluationError,
+)
+
+
+def register_exception_handlers(
+    app: FastAPI,
+) -> None:
+    @app.exception_handler(AuthorizationDeniedError)
+    async def authorization_denied_handler(
+        _request: Request,
+        _exc: AuthorizationDeniedError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=(status.HTTP_403_FORBIDDEN),
+            content={"detail": ("You are not authorized to perform this action.")},
+        )
+
+    @app.exception_handler(PolicyEvaluationError)
+    async def policy_evaluation_error_handler(
+        _request: Request,
+        _exc: PolicyEvaluationError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=(status.HTTP_503_SERVICE_UNAVAILABLE),
+            content={"detail": ("Authorization service is temporarily unavailable.")},
+        )
 
 
 def create_app() -> FastAPI:
@@ -40,6 +74,7 @@ def create_app() -> FastAPI:
         version=settings.app_version,
         debug=settings.debug,
     )
+    register_exception_handlers(app)
     app.add_middleware(RequestContextMiddleware)
 
     # Include the health check router
@@ -65,6 +100,9 @@ def create_app() -> FastAPI:
 
     # Include the incident route
     app.include_router(incidents_router, prefix="/api/v1", tags=["incidents"])
+
+    # Include service status router
+    app.include_router(service_status_router, prefix="/api/v1", tags=["service-status"])
 
     return app
 

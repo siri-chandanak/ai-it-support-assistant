@@ -18,12 +18,12 @@ from ai_it_support_assistant.schemas.auth import User
 from ai_it_support_assistant.schemas.document import (
     DocumentUploadResponse,
 )
-from ai_it_support_assistant.services.authorization_service import (
-    AuthorizationConfigurationError,
-    validate_allowed_roles,
-)
 from ai_it_support_assistant.services.chunking_service import (
     ChunkingError,
+)
+from ai_it_support_assistant.services.document_access_validation_service import (
+    AuthorizationConfigurationError,
+    validate_allowed_roles,
 )
 from ai_it_support_assistant.services.document_service import (
     DocumentTooLargeError,
