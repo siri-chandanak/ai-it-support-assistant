@@ -56,7 +56,7 @@ jobs:
       - name: Install OPA
         uses: open-policy-agent/setup-opa@v2
         with:
-          version: v1.17.1
+          version: v1.20.2
 
       - name: Verify OPA installation
         run: opa version
