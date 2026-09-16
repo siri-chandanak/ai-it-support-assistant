@@ -32,9 +32,6 @@ from ai_it_support_assistant.services.approval_service import (
 from ai_it_support_assistant.services.audit_service import (
     record_audit_event,
 )
-from ai_it_support_assistant.services.authorization_service import (
-    authorize_tool,
-)
 from ai_it_support_assistant.services.incident_service import (
     create_incident,
 )
@@ -45,16 +42,18 @@ from ai_it_support_assistant.services.kubernetes_state_service import (
     KubernetesResourceNotFoundError,
     get_deployment_state,
 )
-from ai_it_support_assistant.services.kubernetes_write_policy_service import (
-    validate_restart_policy,
-)
 from ai_it_support_assistant.services.kubernetes_write_service import (
     KubernetesWriteError,
     deployment_has_restart_token,
     restart_deployment,
 )
-from ai_it_support_assistant.services.resource_authorization_service import (
-    require_namespace_permission,
+from ai_it_support_assistant.services.policy_authorization_service import (
+    authorize_deployment_restart,
+    authorize_incident_create,
+    build_policy_subject,
+)
+from ai_it_support_assistant.services.policy_enforcement_service import (
+    enforce_policy,
 )
 
 logger = logging.getLogger(__name__)
@@ -317,10 +316,16 @@ def execute_claimed_incident_action(
     #
     # Re-authorize using the user's CURRENT roles.
     #
-    authorize_tool(
-        tool_name="create_incident",
-        user=current_user,
+    subject = build_policy_subject(current_user)
+
+    policy_decision = authorize_incident_create(
+        subject=subject,
+        phase="execution",
+        approval_state="approved",
+        session=session,
     )
+
+    enforce_policy(policy_decision)
 
     #
     # Idempotent read-after-success behavior.
@@ -528,19 +533,6 @@ def execute_claimed_restart_action(
     if action.requested_by != current_user.username:
         raise ApprovalOwnershipError("You cannot execute another user's approval.")
 
-    # Re-authorize using CURRENT user roles.
-    authorize_tool(
-        tool_name="restart_deployment",
-        user=current_user,
-    )
-
-    require_namespace_permission(
-        user=current_user,
-        permission="deployment:restart",
-        namespace=payload.namespace,
-        session=session,
-    )
-
     # Idempotent behavior:
     # if the action already succeeded, never restart again.
     if action.state == "succeeded":
@@ -556,25 +548,21 @@ def execute_claimed_restart_action(
         execution_error_type=(KubernetesRestartExecutionError),
     )
 
-    #
-    # Re-check the CURRENT Kubernetes write policy.
-    #
-    # Approval does not permanently authorize execution.
-    # The policy may have changed after approval.
-    #
-    validate_restart_policy(
+    subject = build_policy_subject(current_user)
+
+    policy_decision = authorize_deployment_restart(
+        subject=subject,
         namespace=payload.namespace,
         deployment_name=payload.name,
-        write_enabled=(settings.kubernetes_write_enabled),
-        allowed_namespaces_raw=(settings.kubernetes_restart_allowed_namespaces),
-        allowed_deployments_raw=(settings.kubernetes_restart_allowed_deployments),
+        phase="execution",
+        writes_enabled=(settings.kubernetes_write_enabled),
+        allowed_namespaces=(settings.kubernetes_restart_allowed_namespaces),
+        allowed_deployments=(settings.kubernetes_restart_allowed_deployments),
+        approval_state="approved",
+        session=session,
     )
 
-    #
-    # Re-read the target before performing the write.
-    #
-    # This is read-only.
-    #
+    enforce_policy(policy_decision)
     get_deployment_state(
         name=payload.name,
         namespace=payload.namespace,

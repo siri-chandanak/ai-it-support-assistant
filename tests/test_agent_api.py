@@ -9,14 +9,20 @@ from ai_it_support_assistant.api.dependencies.auth import (
 from ai_it_support_assistant.main import app
 from ai_it_support_assistant.schemas.agent import AgentResponse
 from ai_it_support_assistant.schemas.auth import User
+from ai_it_support_assistant.schemas.policy import (
+    PolicyDecision,
+)
 from ai_it_support_assistant.services.agent_router_service import (
     AgentRoutingError,
 )
 from ai_it_support_assistant.services.live_status_service import (
     ServiceNotFoundError,
 )
-from ai_it_support_assistant.services.tool_authorization_service import (
-    ToolAuthorizationError,
+from ai_it_support_assistant.services.policy_enforcement_service import (
+    AuthorizationDeniedError,
+)
+from ai_it_support_assistant.services.policy_service import (
+    PolicyEvaluationError,
 )
 
 client = TestClient(app)
@@ -79,17 +85,25 @@ def test_agent_endpoint_returns_agent_response() -> None:
         app.dependency_overrides.clear()
 
 
-def test_agent_maps_tool_authorization_error_to_403() -> None:
+def test_agent_maps_authorization_denied_error_to_403() -> None:
     app.dependency_overrides[get_current_user] = _override_reader_user
+
+    decision = PolicyDecision(
+        allowed=False,
+        reason_code="missing_permission",
+        reason="Not authorized.",
+        policy_id="global-permission-v1",
+        obligations=[],
+    )
 
     try:
         with patch(
             "ai_it_support_assistant.api.routes.agent.handle_agent_request",
-            side_effect=ToolAuthorizationError("Not authorized."),
+            side_effect=AuthorizationDeniedError(decision),
         ):
             response = client.post(
                 "/api/v1/agent/ask",
-                json={"question": ("Is vpn-gateway healthy right now?")},
+                json={"question": "Is vpn-gateway healthy right now?"},
             )
 
         assert response.status_code == 403
@@ -146,6 +160,25 @@ def test_agent_rejects_empty_question() -> None:
         )
 
         assert response.status_code == 422
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_agent_maps_policy_evaluation_error_to_503() -> None:
+    app.dependency_overrides[get_current_user] = _override_reader_user
+
+    try:
+        with patch(
+            "ai_it_support_assistant.api.routes.agent.handle_agent_request",
+            side_effect=PolicyEvaluationError("Policy evaluation failed."),
+        ):
+            response = client.post(
+                "/api/v1/agent/ask",
+                json={"question": "Is vpn-gateway healthy right now?"},
+            )
+
+        assert response.status_code == 503
 
     finally:
         app.dependency_overrides.clear()

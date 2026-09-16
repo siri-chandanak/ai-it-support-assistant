@@ -27,11 +27,8 @@ from ai_it_support_assistant.schemas.tools import (
 from ai_it_support_assistant.services.agent_service import (
     handle_agent_request,
 )
-from ai_it_support_assistant.services.resource_authorization_service import (
-    ResourcePermissionDeniedError,
-)
-from ai_it_support_assistant.services.tool_authorization_service import (
-    ToolAuthorizationError,
+from ai_it_support_assistant.services.policy_enforcement_service import (
+    AuthorizationDeniedError,
 )
 
 
@@ -196,13 +193,15 @@ def test_authorization_happens_before_live_tool_execution(db_session: Session) -
             "ai_it_support_assistant.services.agent_service.get_live_service_status"
         ) as mock_live,
     ):
-        with pytest.raises(ToolAuthorizationError):
+        with pytest.raises(AuthorizationDeniedError) as exc_info:
             handle_agent_request(
-                question="Is vpn-gateway healthy right now?",
+                question=("Is vpn-gateway healthy right now?"),
                 current_user=user,
                 session=db_session,
                 **_agent_kwargs(),
             )
+
+    assert exc_info.value.decision.reason_code == "missing_permission"
 
     mock_live.assert_not_called()
 
@@ -229,12 +228,16 @@ def test_reader_is_denied_before_kubernetes_call(
         roles=["reader"],
     )
 
-    with pytest.raises(ToolAuthorizationError):
+    with pytest.raises(AuthorizationDeniedError) as exc_info:
         call_agent(
             current_user=reader,
             question=("How many replicas does demo-api have in ai-it-support-test?"),
             session=db_session,
         )
+
+    assert exc_info.value.decision.reason_code == "missing_permission"
+
+    mock_kubernetes_tool.assert_not_called()
 
     mock_kubernetes_tool.assert_not_called()
 
@@ -520,14 +523,14 @@ def test_reader_cannot_propose_incident(
 
     incidents_before = db_session.scalars(select(IncidentModel)).all()
 
-    with pytest.raises(ToolAuthorizationError):
+    with pytest.raises(AuthorizationDeniedError) as exc_info:
         call_agent(
             current_user=reader,
             question=("Create an incident for vpn-gateway."),
             session=db_session,
         )
 
-    mock_live_status.assert_not_called()
+    assert exc_info.value.decision.reason_code == "missing_permission"
 
     pending_after = db_session.scalars(select(PendingActionModel)).all()
 
@@ -536,6 +539,8 @@ def test_reader_cannot_propose_incident(
     assert len(pending_after) == len(pending_before)
 
     assert len(incidents_after) == len(incidents_before)
+
+    mock_live_status.assert_not_called()
 
 
 @patch("ai_it_support_assistant.services.agent_service.get_live_service_status")
@@ -598,11 +603,13 @@ def test_it_support_cannot_read_ungranted_namespace(
         roles=["it_support"],
     )
 
-    with pytest.raises(
-        ResourcePermissionDeniedError,
-    ):
+    with pytest.raises(AuthorizationDeniedError) as exc_info:
         call_agent(
             current_user=support_user,
             question=("How many ready replicas does demo-api have in finance-prod?"),
             session=db_session,
         )
+
+    assert exc_info.value.decision.reason_code == "namespace_access_denied"
+
+    mock_kubernetes_tool.assert_not_called()

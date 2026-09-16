@@ -1,0 +1,2 @@
+class KubernetesRestartValidationError(Exception):
+    pass

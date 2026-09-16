@@ -29,11 +29,11 @@ from ai_it_support_assistant.services.kubernetes_state_service import (
 from ai_it_support_assistant.services.live_status_service import (
     ServiceNotFoundError,
 )
-from ai_it_support_assistant.services.resource_authorization_service import (
-    ResourcePermissionDeniedError,
+from ai_it_support_assistant.services.policy_enforcement_service import (
+    AuthorizationDeniedError,
 )
-from ai_it_support_assistant.services.tool_authorization_service import (
-    ToolAuthorizationError,
+from ai_it_support_assistant.services.policy_service import (
+    PolicyEvaluationError,
 )
 
 router = APIRouter()
@@ -84,10 +84,7 @@ def ask_agent(
             retrieval_cache_enabled=(settings.retrieval_cache_enabled),
         )
 
-    except (
-        ToolAuthorizationError,
-        ResourcePermissionDeniedError,
-    ) as exc:
+    except AuthorizationDeniedError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not authorized to access the requested resource.",
@@ -97,6 +94,12 @@ def ask_agent(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Service was not found.",
+        ) from exc
+
+    except PolicyEvaluationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authorization service is unavailable.",
         ) from exc
 
     except AgentRoutingError as exc:
