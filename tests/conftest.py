@@ -14,6 +14,12 @@ from ai_it_support_assistant.api.dependencies.auth import (
 from ai_it_support_assistant.db.session import SessionLocal
 from ai_it_support_assistant.main import app
 from ai_it_support_assistant.schemas.auth import User
+from ai_it_support_assistant.schemas.policy import (
+    PolicyContext,
+    PolicyRequest,
+    PolicyResource,
+    PolicySubject,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -105,3 +111,27 @@ def test_database_url() -> str:
         raise RuntimeError("TEST_DATABASE_URL is not set. Use a separate PostgreSQL test database.")
 
     return database_url
+
+
+@pytest.fixture
+def policy_request() -> PolicyRequest:
+    return PolicyRequest(
+        subject=PolicySubject(
+            subject_id="alice",
+            username="alice",
+            roles=["it_support"],
+            permissions=["service-status:read"],
+            disabled=False,
+        ),
+        action="service_status.read",
+        resource=PolicyResource(
+            resource_type="service",
+            resource_id="vpn-gateway",
+            attributes={
+                "service_name": "vpn-gateway",
+            },
+        ),
+        context=PolicyContext(
+            attributes={},
+        ),
+    )

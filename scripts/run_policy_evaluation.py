@@ -95,6 +95,10 @@ def main() -> None:
 
     pdp = get_policy_decision_point(
         mode=settings.policy_pdp_mode,
+        opa_url=settings.opa_url,
+        opa_policy_path=settings.opa_policy_path,
+        opa_timeout_seconds=settings.opa_timeout_seconds,
+        opa_max_attempts=settings.opa_max_attempts,
     )
 
     session_factory = get_session_factory(settings.database_url)

@@ -216,16 +216,20 @@
     "subject": {
       "subject_id": "alice",
       "username": "alice",
-      "roles": ["it_support"],
-      "permissions": ["deployment:restart"],
+      "roles": [
+        "it_support"
+      ],
+      "permissions": [
+        "deployment:restart"
+      ],
       "disabled": false
     },
     "action": "deployment.restart",
     "resource": {
       "resource_type": "kubernetes",
-      "resource_id": "team-a-dev/forbidden-api",
+      "resource_id": "ai-it-support-test/forbidden-api",
       "attributes": {
-        "namespace": "team-a-dev",
+        "namespace": "ai-it-support-test",
         "resource_kind": "deployment",
         "resource_name": "forbidden-api"
       }
@@ -234,8 +238,13 @@
       "attributes": {
         "phase": "proposal",
         "writes_enabled": true,
-        "namespace_globally_allowed": true,
-        "deployment_globally_allowed": false
+        "allowed_namespaces": [
+          "ai-it-support-test"
+        ],
+        "allowed_deployments": [
+          "demo-api"
+        ],
+        "has_namespace_grant": true
       }
     },
     "expected_allowed": false,
@@ -247,18 +256,22 @@
     "subject": {
       "subject_id": "alice",
       "username": "alice",
-      "roles": ["it_support"],
-      "permissions": ["deployment:restart"],
+      "roles": [
+        "it_support"
+      ],
+      "permissions": [
+        "deployment:restart"
+      ],
       "disabled": false
     },
     "action": "deployment.restart",
     "resource": {
       "resource_type": "kubernetes",
-      "resource_id": "team-a-dev/payment-api",
+      "resource_id": "ai-it-support-test/demo-api",
       "attributes": {
-        "namespace": "team-a-dev",
+        "namespace": "ai-it-support-test",
         "resource_kind": "deployment",
-        "resource_name": "payment-api"
+        "resource_name": "demo-api"
       }
     },
     "context": {
@@ -266,8 +279,13 @@
         "phase": "execution",
         "approval_state": "pending",
         "writes_enabled": true,
-        "namespace_globally_allowed": true,
-        "deployment_globally_allowed": true
+        "allowed_namespaces": [
+          "ai-it-support-test"
+        ],
+        "allowed_deployments": [
+          "demo-api"
+        ],
+        "has_namespace_grant": true
       }
     },
     "expected_allowed": false,

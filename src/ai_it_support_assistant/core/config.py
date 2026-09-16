@@ -84,6 +84,14 @@ class Settings(BaseSettings):
 
     policy_pdp_mode: str = "local"
 
+    opa_url: str = "http://127.0.0.1:8181"
+    opa_policy_path: str = "ai_it_support/authz/decision"
+    opa_timeout_seconds: float = 2.0
+    opa_max_attempts: int = 2
+    opa_health_check_enabled: bool = True
+
+    policy_shadow_pdp_enabled: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

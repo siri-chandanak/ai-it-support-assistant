@@ -137,9 +137,17 @@ def evaluate_deployment_restart_policy(
             trace=trace,
         )
 
-    namespace_globally_allowed = (
-        request.context.attributes.get("namespace_globally_allowed") is True
-    )
+    context_attributes = request.context.attributes
+
+    if "namespace_globally_allowed" in context_attributes:
+        namespace_globally_allowed = context_attributes.get("namespace_globally_allowed") is True
+    else:
+        allowed_namespaces = context_attributes.get(
+            "allowed_namespaces",
+            [],
+        )
+
+        namespace_globally_allowed = namespace in allowed_namespaces
 
     trace.append(
         policy_trace_step(
@@ -157,9 +165,15 @@ def evaluate_deployment_restart_policy(
             trace=trace,
         )
 
-    deployment_globally_allowed = (
-        request.context.attributes.get("deployment_globally_allowed") is True
-    )
+    if "deployment_globally_allowed" in context_attributes:
+        deployment_globally_allowed = context_attributes.get("deployment_globally_allowed") is True
+    else:
+        allowed_deployments = context_attributes.get(
+            "allowed_deployments",
+            [],
+        )
+
+        deployment_globally_allowed = deployment_name in allowed_deployments
 
     trace.append(
         policy_trace_step(
@@ -177,13 +191,16 @@ def evaluate_deployment_restart_policy(
             trace=trace,
         )
 
-    namespace_granted = has_resource_permission(
-        session=session,
-        username=(request.subject.username),
-        permission=("deployment:restart"),
-        resource_type="namespace",
-        resource_value=namespace,
-    )
+    if "has_namespace_grant" in context_attributes:
+        namespace_granted = context_attributes.get("has_namespace_grant") is True
+    else:
+        namespace_granted = has_resource_permission(
+            session=session,
+            username=request.subject.username,
+            permission="deployment:restart",
+            resource_type="namespace",
+            resource_value=namespace,
+        )
 
     trace.append(
         policy_trace_step(
