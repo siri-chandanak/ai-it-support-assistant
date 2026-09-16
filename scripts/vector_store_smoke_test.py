@@ -37,6 +37,7 @@ def main() -> None:
         embeddings=embeddings,
         qdrant_url="http://localhost:6333",
         collection_name="document_chunks",
+        qdrant_timeout_seconds=10,
     )
 
     print(f"Stored vectors: {stored_count}")
