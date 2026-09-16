@@ -1,0 +1,27 @@
+{
+  "input": {
+    "subject": {
+      "subject_id": "alice",
+      "username": "alice",
+      "roles": [
+        "it_support"
+      ],
+      "permissions": [
+        "service-status:read"
+      ],
+      "disabled": false,
+      "tenant_id": "default"
+    },
+    "action": "service_status.read",
+    "resource": {
+      "resource_type": "service",
+      "resource_id": "vpn-gateway",
+      "attributes": {
+        "service_name": "vpn-gateway"
+      }
+    },
+    "context": {
+      "attributes": {}
+    }
+  }
+}

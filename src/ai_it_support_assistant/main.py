@@ -21,6 +21,9 @@ from ai_it_support_assistant.cache.cache_service import (
 )
 from ai_it_support_assistant.core.config import get_settings
 from ai_it_support_assistant.core.logging import configure_logging
+from ai_it_support_assistant.services.pdp.opa import (
+    ExternalPDPError,
+)
 from ai_it_support_assistant.services.policy_enforcement_service import (
     AuthorizationDeniedError,
 )
@@ -38,7 +41,7 @@ def register_exception_handlers(
         _exc: AuthorizationDeniedError,
     ) -> JSONResponse:
         return JSONResponse(
-            status_code=(status.HTTP_403_FORBIDDEN),
+            status_code=status.HTTP_403_FORBIDDEN,
             content={"detail": ("You are not authorized to perform this action.")},
         )
 
@@ -48,7 +51,17 @@ def register_exception_handlers(
         _exc: PolicyEvaluationError,
     ) -> JSONResponse:
         return JSONResponse(
-            status_code=(status.HTTP_503_SERVICE_UNAVAILABLE),
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": ("Authorization service is temporarily unavailable.")},
+        )
+
+    @app.exception_handler(ExternalPDPError)
+    async def external_pdp_error_handler(
+        _request: Request,
+        _exc: ExternalPDPError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"detail": ("Authorization service is temporarily unavailable.")},
         )
 

@@ -39,6 +39,20 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+  
+  opa:
+    image: openpolicyagent/opa:1.8.0
+    container_name: ai-support-opa
+    command:
+      - run
+      - --server
+      - --addr=0.0.0.0:8181
+      - /policy/policies
+    ports:
+      - "8181:8181"
+    volumes:
+      - ./opa:/policy:ro
+    restart: unless-stopped
 
 volumes:
   postgres_data:
