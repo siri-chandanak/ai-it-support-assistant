@@ -13,6 +13,8 @@ def main() -> None:
             chunk_index=0,
             text="Restart the VPN client before escalating.",
             character_count=41,
+            token_count=10,
+            allowed_roles=["it_support","reader","admin"],
         ),
         DocumentChunk(
             chunk_id="test-document:1",
@@ -20,6 +22,8 @@ def main() -> None:
             chunk_index=1,
             text="Database passwords must be rotated every 90 days.",
             character_count=49,
+            token_count=10,
+            allowed_roles=["it_support","reader","admin"],
         ),
     ]
 
