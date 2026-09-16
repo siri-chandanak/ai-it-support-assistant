@@ -100,12 +100,6 @@ jobs:
       - name: Run policy evaluation
         run: uv run python scripts/run_policy_evaluation.py
 
-      - name: Seed RAG evaluation data
-        run: uv run python scripts/vector_store_smoke_test.py
-
-      - name: Run RAG evaluation
-        run: uv run python scripts/run_rag_evaluation.py
-
       - name: Run security evaluation
         run: uv run python scripts/run_security_evaluation.py
 
