@@ -1,0 +1,11 @@
+services:
+  policy_bundle_service:
+    url: http://localhost:8888
+
+bundles:
+  ai-it-support-authz:
+    service: policy_bundle_service
+    resource: bundles/ai-it-support-authz/bundle.tar.gz
+
+status:
+  console: true

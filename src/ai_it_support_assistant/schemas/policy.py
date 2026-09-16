@@ -57,10 +57,14 @@ class PolicyTraceStep(BaseModel):
 
 class PolicyDecision(BaseModel):
     decision_id: str = Field(default_factory=generate_policy_decision_id)
+
     allowed: bool
     reason_code: str
     reason: str
     policy_id: str
+
+    policy_version: str | None = None
+    bundle_revision: str | None = None
 
     obligations: list[str] = Field(
         default_factory=list,
