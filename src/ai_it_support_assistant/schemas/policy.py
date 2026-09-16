@@ -1,6 +1,11 @@
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
+
+
+def generate_policy_decision_id() -> str:
+    return f"POL-{uuid4().hex[:12].upper()}"
 
 
 class PolicySubject(BaseModel):
@@ -44,7 +49,14 @@ class PolicyRequest(BaseModel):
     )
 
 
+class PolicyTraceStep(BaseModel):
+    rule_id: str
+    outcome: str
+    detail: str | None = None
+
+
 class PolicyDecision(BaseModel):
+    decision_id: str = Field(default_factory=generate_policy_decision_id)
     allowed: bool
     reason_code: str
     reason: str
@@ -53,3 +65,4 @@ class PolicyDecision(BaseModel):
     obligations: list[str] = Field(
         default_factory=list,
     )
+    trace: list[PolicyTraceStep] = Field(default_factory=list)

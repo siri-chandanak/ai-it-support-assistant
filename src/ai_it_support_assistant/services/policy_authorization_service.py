@@ -1,5 +1,8 @@
 from sqlalchemy.orm import Session
 
+from ai_it_support_assistant.core.config import (
+    get_settings,
+)
 from ai_it_support_assistant.schemas.policy import (
     PolicyContext,
     PolicyDecision,
@@ -7,12 +10,33 @@ from ai_it_support_assistant.schemas.policy import (
     PolicyResource,
     PolicySubject,
 )
+from ai_it_support_assistant.services.pdp.factory import (
+    get_policy_decision_point,
+)
 from ai_it_support_assistant.services.permission_service import (
     get_user_permissions,
 )
-from ai_it_support_assistant.services.policy_service import (
-    evaluate_policy,
+from ai_it_support_assistant.services.policy_decision_service import (
+    decide_policy,
 )
+
+
+def _authorize(
+    *,
+    request: PolicyRequest,
+    session: Session,
+) -> PolicyDecision:
+    settings = get_settings()
+
+    pdp = get_policy_decision_point(
+        mode=settings.policy_pdp_mode,
+    )
+
+    return decide_policy(
+        pdp=pdp,
+        request=request,
+        session=session,
+    )
 
 
 def build_policy_subject(
@@ -41,29 +65,35 @@ def authorize_deployment_restart(
     session: Session,
     approval_state: str | None = None,
 ) -> PolicyDecision:
+
+    namespace_globally_allowed = namespace in allowed_namespaces
+
+    deployment_globally_allowed = deployment_name in allowed_deployments
+
     request = PolicyRequest(
         subject=subject,
         action="deployment.restart",
         resource=PolicyResource(
             resource_type="deployment",
-            resource_id=(f"{namespace}/{deployment_name}"),
+            resource_id=f"{namespace}/{deployment_name}",
             attributes={
                 "namespace": namespace,
-                "deployment_name": (deployment_name),
+                "resource_kind": "deployment",
+                "resource_name": deployment_name,
             },
         ),
         context=PolicyContext(
             attributes={
                 "phase": phase,
-                "writes_enabled": (writes_enabled),
-                "allowed_namespaces": (allowed_namespaces),
-                "allowed_deployments": (allowed_deployments),
-                "approval_state": (approval_state),
+                "writes_enabled": writes_enabled,
+                "namespace_globally_allowed": (namespace_globally_allowed),
+                "deployment_globally_allowed": (deployment_globally_allowed),
+                "approval_state": approval_state,
             },
         ),
     )
 
-    return evaluate_policy(
+    return _authorize(
         request=request,
         session=session,
     )
@@ -90,7 +120,7 @@ def authorize_incident_create(
         ),
     )
 
-    return evaluate_policy(
+    return _authorize(
         request=request,
         session=session,
     )
@@ -114,7 +144,7 @@ def authorize_service_status_read(
         ),
     )
 
-    return evaluate_policy(
+    return _authorize(
         request=request,
         session=session,
     )
@@ -142,7 +172,7 @@ def authorize_kubernetes_read(
         ),
     )
 
-    return evaluate_policy(
+    return _authorize(
         request=request,
         session=session,
     )

@@ -37,38 +37,46 @@ def build_subject(
 
 def build_restart_request(
     *,
+    namespace: str = "team-a-dev",
     phase: str = "proposal",
     writes_enabled: bool = True,
     approval_state: str | None = None,
-    namespace: str = "team-a-dev",
-    deployment_name: str = "payment-api",
 ) -> PolicyRequest:
+    allowed_namespaces = [
+        "team-a-dev",
+    ]
+
+    allowed_deployments = [
+        "payment-api",
+    ]
+
     return PolicyRequest(
-        subject=build_subject(
+        subject=PolicySubject(
+            subject_id="alice",
+            username="alice",
+            roles=["admin"],
             permissions=[
                 "deployment:restart",
             ],
+            disabled=False,
         ),
         action="deployment.restart",
         resource=PolicyResource(
             resource_type="deployment",
-            resource_id=(f"{namespace}/{deployment_name}"),
+            resource_id=(f"{namespace}/payment-api"),
             attributes={
                 "namespace": namespace,
-                "deployment_name": (deployment_name),
+                "resource_kind": "deployment",
+                "resource_name": ("payment-api"),
             },
         ),
         context=PolicyContext(
             attributes={
                 "phase": phase,
                 "writes_enabled": (writes_enabled),
+                "namespace_globally_allowed": (namespace in allowed_namespaces),
+                "deployment_globally_allowed": ("payment-api" in allowed_deployments),
                 "approval_state": (approval_state),
-                "allowed_namespaces": [
-                    "team-a-dev",
-                ],
-                "allowed_deployments": [
-                    "payment-api",
-                ],
             },
         ),
     )

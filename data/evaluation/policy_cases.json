@@ -1,0 +1,276 @@
+[
+  {
+    "case_id": "global-001",
+    "description": "Disabled user cannot read service status",
+    "subject": {
+      "subject_id": "disabled-user",
+      "username": "disabled-user",
+      "roles": ["it_support"],
+      "permissions": ["service-status:read"],
+      "disabled": true
+    },
+    "action": "service_status.read",
+    "resource": {
+      "resource_type": "service",
+      "resource_id": "vpn-gateway",
+      "attributes": {
+        "service_name": "vpn-gateway"
+      }
+    },
+    "context": {
+      "attributes": {}
+    },
+    "expected_allowed": false,
+    "expected_reason_code": "subject_disabled"
+  },
+  {
+    "case_id": "global-002",
+    "description": "Unknown action is denied",
+    "subject": {
+      "subject_id": "alice",
+      "username": "alice",
+      "roles": ["admin"],
+      "permissions": [],
+      "disabled": false
+    },
+    "action": "spaceship.launch",
+    "resource": {
+      "resource_type": "unknown",
+      "resource_id": "abc",
+      "attributes": {}
+    },
+    "context": {
+      "attributes": {}
+    },
+    "expected_allowed": false,
+    "expected_reason_code": "unknown_action"
+  },
+  {
+    "case_id": "service-001",
+    "description": "Missing service status permission is denied",
+    "subject": {
+      "subject_id": "reader",
+      "username": "reader",
+      "roles": ["reader"],
+      "permissions": [],
+      "disabled": false
+    },
+    "action": "service_status.read",
+    "resource": {
+      "resource_type": "service",
+      "resource_id": "vpn-gateway",
+      "attributes": {
+        "service_name": "vpn-gateway"
+      }
+    },
+    "context": {
+      "attributes": {}
+    },
+    "expected_allowed": false,
+    "expected_reason_code": "missing_permission"
+  },
+  {
+    "case_id": "service-002",
+    "description": "Service status permission allows service read",
+    "subject": {
+      "subject_id": "alice",
+      "username": "alice",
+      "roles": ["it_support"],
+      "permissions": ["service-status:read"],
+      "disabled": false
+    },
+    "action": "service_status.read",
+    "resource": {
+      "resource_type": "service",
+      "resource_id": "vpn-gateway",
+      "attributes": {
+        "service_name": "vpn-gateway"
+      }
+    },
+    "context": {
+      "attributes": {}
+    },
+    "expected_allowed": true,
+    "expected_reason_code": "allowed"
+  },
+  {
+    "case_id": "incident-001",
+    "description": "Incident create without permission is denied",
+    "subject": {
+      "subject_id": "reader",
+      "username": "reader",
+      "roles": ["reader"],
+      "permissions": [],
+      "disabled": false
+    },
+    "action": "incident.create",
+    "resource": {
+      "resource_type": "incident",
+      "resource_id": null,
+      "attributes": {}
+    },
+    "context": {
+      "attributes": {
+        "phase": "proposal"
+      }
+    },
+    "expected_allowed": false,
+    "expected_reason_code": "missing_permission"
+  },
+  {
+    "case_id": "restart-001",
+    "description": "Restart without permission is denied",
+    "subject": {
+      "subject_id": "alice",
+      "username": "alice",
+      "roles": ["it_support"],
+      "permissions": [],
+      "disabled": false
+    },
+    "action": "deployment.restart",
+    "resource": {
+      "resource_type": "kubernetes",
+      "resource_id": "team-a-dev/payment-api",
+      "attributes": {
+        "namespace": "team-a-dev",
+        "resource_kind": "deployment",
+        "resource_name": "payment-api"
+      }
+    },
+    "context": {
+      "attributes": {
+        "phase": "proposal",
+        "writes_enabled": true,
+        "namespace_globally_allowed": true,
+        "deployment_globally_allowed": true
+      }
+    },
+    "expected_allowed": false,
+    "expected_reason_code": "missing_permission"
+  },
+  {
+    "case_id": "restart-002",
+    "description": "Restart is denied when writes are disabled",
+    "subject": {
+      "subject_id": "alice",
+      "username": "alice",
+      "roles": ["it_support"],
+      "permissions": ["deployment:restart"],
+      "disabled": false
+    },
+    "action": "deployment.restart",
+    "resource": {
+      "resource_type": "kubernetes",
+      "resource_id": "team-a-dev/payment-api",
+      "attributes": {
+        "namespace": "team-a-dev",
+        "resource_kind": "deployment",
+        "resource_name": "payment-api"
+      }
+    },
+    "context": {
+      "attributes": {
+        "phase": "proposal",
+        "writes_enabled": false,
+        "namespace_globally_allowed": true,
+        "deployment_globally_allowed": true
+      }
+    },
+    "expected_allowed": false,
+    "expected_reason_code": "kubernetes_writes_disabled"
+  },
+  {
+    "case_id": "restart-003",
+    "description": "Globally blocked namespace is denied",
+    "subject": {
+      "subject_id": "alice",
+      "username": "alice",
+      "roles": ["it_support"],
+      "permissions": ["deployment:restart"],
+      "disabled": false
+    },
+    "action": "deployment.restart",
+    "resource": {
+      "resource_type": "kubernetes",
+      "resource_id": "production/payment-api",
+      "attributes": {
+        "namespace": "production",
+        "resource_kind": "deployment",
+        "resource_name": "payment-api"
+      }
+    },
+    "context": {
+      "attributes": {
+        "phase": "proposal",
+        "writes_enabled": true,
+        "namespace_globally_allowed": false,
+        "deployment_globally_allowed": true
+      }
+    },
+    "expected_allowed": false,
+    "expected_reason_code": "namespace_not_globally_allowed"
+  },
+  {
+    "case_id": "restart-004",
+    "description": "Globally blocked deployment is denied",
+    "subject": {
+      "subject_id": "alice",
+      "username": "alice",
+      "roles": ["it_support"],
+      "permissions": ["deployment:restart"],
+      "disabled": false
+    },
+    "action": "deployment.restart",
+    "resource": {
+      "resource_type": "kubernetes",
+      "resource_id": "team-a-dev/forbidden-api",
+      "attributes": {
+        "namespace": "team-a-dev",
+        "resource_kind": "deployment",
+        "resource_name": "forbidden-api"
+      }
+    },
+    "context": {
+      "attributes": {
+        "phase": "proposal",
+        "writes_enabled": true,
+        "namespace_globally_allowed": true,
+        "deployment_globally_allowed": false
+      }
+    },
+    "expected_allowed": false,
+    "expected_reason_code": "deployment_not_globally_allowed"
+  },
+  {
+    "case_id": "restart-005",
+    "description": "Execution without approval is denied",
+    "subject": {
+      "subject_id": "alice",
+      "username": "alice",
+      "roles": ["it_support"],
+      "permissions": ["deployment:restart"],
+      "disabled": false
+    },
+    "action": "deployment.restart",
+    "resource": {
+      "resource_type": "kubernetes",
+      "resource_id": "team-a-dev/payment-api",
+      "attributes": {
+        "namespace": "team-a-dev",
+        "resource_kind": "deployment",
+        "resource_name": "payment-api"
+      }
+    },
+    "context": {
+      "attributes": {
+        "phase": "execution",
+        "approval_state": "pending",
+        "writes_enabled": true,
+        "namespace_globally_allowed": true,
+        "deployment_globally_allowed": true
+      }
+    },
+    "expected_allowed": false,
+    "expected_reason_code": "approval_required"
+  }
+]

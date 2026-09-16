@@ -507,6 +507,7 @@ def test_incident_proposal_denied_without_permission() -> None:
         context=PolicyContext(
             attributes={
                 "phase": "proposal",
+                "approval_state": None,
             },
         ),
     )

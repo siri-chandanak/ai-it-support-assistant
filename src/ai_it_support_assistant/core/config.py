@@ -82,6 +82,8 @@ class Settings(BaseSettings):
 
     oidc_required_scope: str = "ai-support.access"
 
+    policy_pdp_mode: str = "local"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
