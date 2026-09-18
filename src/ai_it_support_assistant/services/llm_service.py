@@ -1,4 +1,5 @@
 import logging
+import time
 from functools import lru_cache
 
 from openai import (
@@ -9,13 +10,25 @@ from openai import (
     OpenAI,
     RateLimitError,
 )
+from opentelemetry.trace import Status, StatusCode
 
 from ai_it_support_assistant.core.request_context import (
     get_request_id,
 )
+from ai_it_support_assistant.observability.metrics import (
+    LLM_DURATION,
+    LLM_FAILURES,
+    LLM_INPUT_TOKENS,
+    LLM_OUTPUT_TOKENS,
+    LLM_REQUESTS,
+)
+from ai_it_support_assistant.observability.tracing import (
+    get_tracer,
+)
 from ai_it_support_assistant.schemas.rag import GroundedLLMOutput
 
 logger = logging.getLogger(__name__)
+tracer = get_tracer()
 
 
 class LLMError(Exception):
@@ -119,65 +132,307 @@ Company support context:
 {context}
 """.strip()
 
-    try:
-        response = client.responses.create(
+    with tracer.start_as_current_span("llm.generate") as span:
+        # Safe tracing attributes only.
+        span.set_attribute(
+            "llm.provider",
+            "openai",
+        )
+        span.set_attribute(
+            "llm.model",
+            model_name,
+        )
+        span.set_attribute(
+            "llm.context_character_count",
+            len(context),
+        )
+
+        # ----------------------------------------------------
+        # Prometheus request counter
+        # ----------------------------------------------------
+
+        LLM_REQUESTS.labels(
             model=model_name,
-            instructions=instructions,
-            input=input_text,
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "grounded_rag_answer",
-                    "strict": True,
-                    "schema": GroundedLLMOutput.model_json_schema(),
-                }
-            },
+        ).inc()
+
+        llm_start_time = time.perf_counter()
+
+        try:
+            response = client.responses.create(
+                model=model_name,
+                instructions=instructions,
+                input=input_text,
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": ("grounded_rag_answer"),
+                        "strict": True,
+                        "schema": (GroundedLLMOutput.model_json_schema()),
+                    }
+                },
+            )
+
+        except AuthenticationError as exc:
+            LLM_FAILURES.labels(
+                model=model_name,
+            ).inc()
+
+            span.set_attribute(
+                "llm.error_type",
+                "authentication",
+            )
+            span.set_status(
+                Status(
+                    StatusCode.ERROR,
+                    "LLM authentication failure",
+                )
+            )
+
+            logger.error(
+                ("llm_authentication_failed request_id=%s"),
+                get_request_id(),
+            )
+
+            raise LLMAuthenticationError("LLM provider authentication failed.") from exc
+
+        except RateLimitError as exc:
+            LLM_FAILURES.labels(
+                model=model_name,
+            ).inc()
+
+            span.set_attribute(
+                "llm.error_type",
+                "rate_limit",
+            )
+            span.set_status(
+                Status(
+                    StatusCode.ERROR,
+                    "LLM rate limit",
+                )
+            )
+
+            logger.warning(
+                ("llm_rate_limited request_id=%s"),
+                get_request_id(),
+            )
+
+            raise LLMRateLimitError("LLM provider rate limit exceeded.") from exc
+
+        except APITimeoutError as exc:
+            LLM_FAILURES.labels(
+                model=model_name,
+            ).inc()
+
+            span.set_attribute(
+                "llm.error_type",
+                "timeout",
+            )
+            span.set_status(
+                Status(
+                    StatusCode.ERROR,
+                    "LLM timeout",
+                )
+            )
+
+            logger.warning(
+                ("llm_timeout request_id=%s"),
+                get_request_id(),
+            )
+
+            raise LLMTimeoutError("LLM provider request timed out.") from exc
+
+        except APIConnectionError as exc:
+            LLM_FAILURES.labels(
+                model=model_name,
+            ).inc()
+
+            span.set_attribute(
+                "llm.error_type",
+                "connection",
+            )
+            span.set_status(
+                Status(
+                    StatusCode.ERROR,
+                    "LLM connection failure",
+                )
+            )
+
+            logger.error(
+                ("llm_connection_failed request_id=%s"),
+                get_request_id(),
+            )
+
+            raise LLMUnavailableError("Unable to connect to LLM provider.") from exc
+
+        except APIStatusError as exc:
+            LLM_FAILURES.labels(
+                model=model_name,
+            ).inc()
+
+            span.set_attribute(
+                "llm.error_type",
+                "api_status",
+            )
+            span.set_attribute(
+                "llm.status_code",
+                exc.status_code,
+            )
+            span.set_status(
+                Status(
+                    StatusCode.ERROR,
+                    "LLM provider API failure",
+                )
+            )
+
+            logger.error(
+                ("llm_api_status_error request_id=%s status_code=%s"),
+                get_request_id(),
+                exc.status_code,
+            )
+
+            raise LLMUnavailableError(f"LLM provider returned status {exc.status_code}.") from exc
+
+        except Exception as exc:
+            LLM_FAILURES.labels(
+                model=model_name,
+            ).inc()
+
+            span.set_attribute(
+                "llm.error_type",
+                "unexpected",
+            )
+            span.set_status(
+                Status(
+                    StatusCode.ERROR,
+                    "Unexpected LLM failure",
+                )
+            )
+
+            logger.error(
+                ("llm_unexpected_error request_id=%s error_type=%s"),
+                get_request_id(),
+                type(exc).__name__,
+            )
+
+            raise LLMError("Failed to generate LLM response.") from exc
+
+        finally:
+            # Measure provider latency for success and failure.
+            LLM_DURATION.labels(
+                model=model_name,
+            ).observe(time.perf_counter() - llm_start_time)
+
+        # ----------------------------------------------------
+        # Token usage
+        # ----------------------------------------------------
+
+        usage = getattr(
+            response,
+            "usage",
+            None,
         )
-    except AuthenticationError as exc:
-        logger.error(
-            "llm_authentication_failed request_id=%s",
+
+        if usage is not None:
+            input_tokens = getattr(
+                usage,
+                "input_tokens",
+                None,
+            )
+
+            output_tokens = getattr(
+                usage,
+                "output_tokens",
+                None,
+            )
+
+            if input_tokens is not None:
+                span.set_attribute(
+                    "llm.input_tokens",
+                    input_tokens,
+                )
+
+                LLM_INPUT_TOKENS.labels(
+                    model=model_name,
+                ).inc(input_tokens)
+
+            if output_tokens is not None:
+                span.set_attribute(
+                    "llm.output_tokens",
+                    output_tokens,
+                )
+
+                LLM_OUTPUT_TOKENS.labels(
+                    model=model_name,
+                ).inc(output_tokens)
+
+        # ----------------------------------------------------
+        # Empty response handling
+        # ----------------------------------------------------
+
+        if not response.output_text.strip():
+            LLM_FAILURES.labels(
+                model=model_name,
+            ).inc()
+
+            span.set_attribute(
+                "llm.error_type",
+                "empty_response",
+            )
+
+            span.set_status(
+                Status(
+                    StatusCode.ERROR,
+                    "LLM returned empty response",
+                )
+            )
+
+            raise LLMError("LLM returned an empty response.")
+
+        # ----------------------------------------------------
+        # Structured output validation
+        # ----------------------------------------------------
+
+        try:
+            grounded_output = GroundedLLMOutput.model_validate_json(response.output_text)
+
+        except Exception as exc:
+            LLM_FAILURES.labels(
+                model=model_name,
+            ).inc()
+
+            span.set_attribute(
+                "llm.error_type",
+                "invalid_structured_output",
+            )
+
+            span.set_status(
+                Status(
+                    StatusCode.ERROR,
+                    "Invalid structured LLM output",
+                )
+            )
+
+            raise LLMError("LLM returned invalid structured output.") from exc
+
+        # ----------------------------------------------------
+        # Successful result tracing
+        # ----------------------------------------------------
+
+        span.set_attribute(
+            "llm.insufficient_context",
+            grounded_output.insufficient_context,
+        )
+
+        span.set_attribute(
+            "llm.outcome",
+            ("insufficient_context" if grounded_output.insufficient_context else "answered"),
+        )
+
+        logger.info(
+            ("llm_request_completed request_id=%s model=%s insufficient_context=%s"),
             get_request_id(),
+            model_name,
+            grounded_output.insufficient_context,
         )
-        raise LLMAuthenticationError("LLM provider authentication failed.") from exc
 
-    except RateLimitError as exc:
-        logger.warning(
-            "llm_rate_limited request_id=%s",
-            get_request_id(),
-        )
-        raise LLMRateLimitError("LLM provider rate limit exceeded.") from exc
-
-    except APITimeoutError as exc:
-        logger.warning(
-            "llm_timeout request_id=%s",
-            get_request_id(),
-        )
-        raise LLMTimeoutError("LLM provider request timed out.") from exc
-
-    except APIConnectionError as exc:
-        logger.error(
-            "llm_connection_failed request_id=%s",
-            get_request_id(),
-        )
-        raise LLMUnavailableError("Unable to connect to LLM provider.") from exc
-
-    except APIStatusError as exc:
-        logger.error(
-            "llm_api_status_error request_id=%s status_code=%s",
-            get_request_id(),
-            exc.status_code,
-        )
-        raise LLMUnavailableError(f"LLM provider returned status {exc.status_code}.") from exc
-
-    except Exception as exc:
-        print(f"OpenAI API error: {type(exc).__name__}: {exc}")
-
-        raise LLMError("Failed to generate LLM response.") from exc
-
-    if not response.output_text.strip():
-        raise LLMError("LLM returned an empty response.")
-
-    try:
-        return GroundedLLMOutput.model_validate_json(response.output_text)
-    except Exception as exc:
-        raise LLMError("LLM returned invalid structured output.") from exc
+        return grounded_output

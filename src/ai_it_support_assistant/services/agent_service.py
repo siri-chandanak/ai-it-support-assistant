@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from ai_it_support_assistant.core.request_context import (
     get_request_id,
 )
+from ai_it_support_assistant.observability.tracing import get_tracer
 from ai_it_support_assistant.schemas.agent import (
     AgentResponse,
 )
@@ -41,6 +42,8 @@ from ai_it_support_assistant.services.rag_service import (
 
 logger = logging.getLogger(__name__)
 
+tracer = get_tracer()
+
 
 def handle_agent_request(
     *,
@@ -67,13 +70,24 @@ def handle_agent_request(
     embedding_cache_enabled: bool,
     retrieval_cache_enabled: bool,
 ) -> AgentResponse:
-    decision = route_agent_request(
-        question=question,
-        api_key=openai_api_key,
-        model_name=llm_model,
-        timeout_seconds=openai_timeout_seconds,
-        max_retries=openai_max_retries,
-    )
+    with tracer.start_as_current_span("agent.route") as span:
+        decision = route_agent_request(
+            question=question,
+            api_key=openai_api_key,
+            model_name=llm_model,
+            timeout_seconds=openai_timeout_seconds,
+            max_retries=openai_max_retries,
+        )
+
+        span.set_attribute(
+            "agent.action",
+            decision.action,
+        )
+
+        span.set_attribute(
+            "user.role_count",
+            len(current_user.roles),
+        )
 
     logger.info(
         "agent_decision request_id=%s action=%s",

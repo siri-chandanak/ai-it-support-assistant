@@ -10,6 +10,7 @@ from ai_it_support_assistant.api.routes.auth import router as auth_router
 from ai_it_support_assistant.api.routes.documents import router as documents_router
 from ai_it_support_assistant.api.routes.health import router as health_router
 from ai_it_support_assistant.api.routes.incidents import router as incidents_router
+from ai_it_support_assistant.api.routes.metrics import router as metrics_router
 from ai_it_support_assistant.api.routes.rag import router as rag_router
 from ai_it_support_assistant.api.routes.retrieval import router as retrieval_router
 from ai_it_support_assistant.api.routes.service_status import (
@@ -21,8 +22,14 @@ from ai_it_support_assistant.cache.cache_service import (
 )
 from ai_it_support_assistant.core.config import get_settings
 from ai_it_support_assistant.core.logging import configure_logging
+from ai_it_support_assistant.observability.bootstrap import (
+    configure_api_observability,
+)
 from ai_it_support_assistant.services.pdp.opa import (
     ExternalPDPError,
+)
+from ai_it_support_assistant.services.policy_decision_service import (
+    PolicyDecisionUnavailableError,
 )
 from ai_it_support_assistant.services.policy_enforcement_service import (
     AuthorizationDeniedError,
@@ -35,6 +42,18 @@ from ai_it_support_assistant.services.policy_service import (
 def register_exception_handlers(
     app: FastAPI,
 ) -> None:
+    @app.exception_handler(PolicyDecisionUnavailableError)
+    async def policy_decision_unavailable_handler(
+        request: Request,
+        exc: PolicyDecisionUnavailableError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "detail": "Authorization service unavailable.",
+            },
+        )
+
     @app.exception_handler(AuthorizationDeniedError)
     async def authorization_denied_handler(
         _request: Request,
@@ -87,6 +106,7 @@ def create_app() -> FastAPI:
         version=settings.app_version,
         debug=settings.debug,
     )
+    configure_api_observability(app)
     register_exception_handlers(app)
     app.add_middleware(RequestContextMiddleware)
 
@@ -116,6 +136,8 @@ def create_app() -> FastAPI:
 
     # Include service status router
     app.include_router(service_status_router, prefix="/api/v1", tags=["service-status"])
+
+    app.include_router(metrics_router)
 
     return app
 

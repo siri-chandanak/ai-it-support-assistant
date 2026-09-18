@@ -175,3 +175,13 @@ class PendingActionModel(Base):
         String(32),
         nullable=True,
     )
+
+    origin_trace_id: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
+    origin_request_id: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+    )

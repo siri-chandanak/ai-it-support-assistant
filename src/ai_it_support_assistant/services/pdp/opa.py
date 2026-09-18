@@ -6,6 +6,12 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from ai_it_support_assistant.observability.metrics import (
+    OPA_DURATION,
+    OPA_FAILURES,
+    OPA_REQUESTS,
+    OPA_TIMEOUTS,
+)
 from ai_it_support_assistant.schemas.policy import (
     PolicyDecision,
     PolicyRequest,
@@ -76,7 +82,16 @@ class OPAPolicyDecisionPoint:
 
         last_error: ExternalPDPError | None = None
 
-        for attempt in range(1, self._max_attempts + 1):
+        for attempt in range(
+            1,
+            self._max_attempts + 1,
+        ):
+            # One metric request represents one real HTTP attempt.
+            # If OPA is retried, each retry is another request.
+            OPA_REQUESTS.inc()
+
+            request_started_at = time.perf_counter()
+
             try:
                 response = self._client.post(
                     self._decision_url,
@@ -84,9 +99,13 @@ class OPAPolicyDecisionPoint:
                 )
 
                 if response.status_code >= 500:
+                    OPA_FAILURES.inc()
+
                     raise ExternalPDPUnavailableError("OPA returned a server error.")
 
                 if response.status_code != 200:
+                    OPA_FAILURES.inc()
+
                     raise ExternalPDPInvalidResponseError(
                         f"OPA returned an unexpected HTTP status: {response.status_code}"
                     )
@@ -100,25 +119,39 @@ class OPAPolicyDecisionPoint:
                     ValueError,
                     ValidationError,
                 ) as exc:
+                    OPA_FAILURES.inc()
+
                     raise ExternalPDPInvalidResponseError(
                         "OPA returned an invalid policy response."
                     ) from exc
 
+                # Important:
+                # allowed=False is NOT a failure.
+                #
+                # A valid policy DENY means OPA worked
+                # correctly and returned a policy decision.
                 return opa_response.result
 
             except httpx.TimeoutException as exc:
+                OPA_TIMEOUTS.inc()
+                OPA_FAILURES.inc()
+
                 last_error = ExternalPDPTimeoutError("OPA policy evaluation timed out.")
 
                 if attempt == self._max_attempts:
                     raise last_error from exc
 
             except httpx.HTTPError as exc:
+                OPA_FAILURES.inc()
+
                 last_error = ExternalPDPUnavailableError("OPA policy service is unavailable.")
 
                 if attempt == self._max_attempts:
                     raise last_error from exc
 
             except ExternalPDPUnavailableError as exc:
+                # OPA_FAILURES was already incremented
+                # when the server-side failure was detected.
                 last_error = exc
 
                 if attempt == self._max_attempts:
@@ -126,14 +159,21 @@ class OPAPolicyDecisionPoint:
 
             except ExternalPDPInvalidResponseError:
                 # Invalid responses are not transient.
-                # Retrying would not normally help.
+                # Retrying normally would not help.
+                #
+                # OPA_FAILURES was already incremented
+                # before this exception was raised.
                 raise
+
+            finally:
+                OPA_DURATION.observe(time.perf_counter() - request_started_at)
 
             if attempt < self._max_attempts:
                 delay_seconds = min(
                     0.1 * (2 ** (attempt - 1)),
                     1.0,
                 )
+
                 time.sleep(delay_seconds)
 
         if last_error is not None:

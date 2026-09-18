@@ -98,6 +98,14 @@ class Settings(BaseSettings):
 
     policy_input_version: str = "1"
 
+    otel_enabled: bool = False
+    otel_service_name: str = "ai-it-support-api"
+    otel_exporter_otlp_endpoint: str = "http://localhost:4317"
+    otel_environment: str = "development"
+
+    metrics_enabled: bool = True
+    worker_metrics_port: int = 9101
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

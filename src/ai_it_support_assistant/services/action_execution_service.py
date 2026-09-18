@@ -1,8 +1,16 @@
 import logging
+import time
 
+from opentelemetry.trace import Status, StatusCode
 from sqlalchemy.orm import Session
 
 from ai_it_support_assistant.core.config import Settings
+from ai_it_support_assistant.observability.metrics import (
+    ACTION_EXECUTION_DURATION,
+)
+from ai_it_support_assistant.observability.tracing import (
+    get_tracer,
+)
 from ai_it_support_assistant.repositories.approval_repository import (
     ConcurrentActionUpdateError,
     get_pending_action,
@@ -57,6 +65,8 @@ from ai_it_support_assistant.services.policy_enforcement_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+tracer = get_tracer()
 
 
 class ApprovalOwnershipError(Exception):
@@ -384,14 +394,33 @@ def execute_claimed_incident_action(
     idempotency_key = f"create_incident:{approval_id}"
 
     try:
-        execution_result = create_incident(
-            session=session,
-            request=incident_request,
-            created_by=current_user.username,
-            idempotency_key=idempotency_key,
-        )
+        with tracer.start_as_current_span("incident.create") as span:
+            try:
+                execution_result = create_incident(
+                    session=session,
+                    request=incident_request,
+                    created_by=current_user.username,
+                    idempotency_key=idempotency_key,
+                )
 
-        incident = execution_result.incident
+                incident = execution_result.incident
+
+                span.set_attribute(
+                    "incident.creation_outcome",
+                    "succeeded",
+                )
+
+            except Exception as exc:
+                span.record_exception(exc)
+
+                span.set_status(
+                    Status(
+                        StatusCode.ERROR,
+                        "incident creation failed",
+                    )
+                )
+
+                raise
 
     except Exception:
         #
@@ -425,10 +454,6 @@ def execute_claimed_incident_action(
             )
 
             session.commit()
-
-            #
-            # Ensure later reads see the updated state.
-            #
             session.expire_all()
 
         except ConcurrentActionUpdateError:
@@ -533,13 +558,15 @@ def execute_claimed_restart_action(
     if action.requested_by != current_user.username:
         raise ApprovalOwnershipError("You cannot execute another user's approval.")
 
+    #
     # Idempotent behavior:
-    # if the action already succeeded, never restart again.
+    # if action already succeeded, NEVER restart again.
+    #
     if action.state == "succeeded":
         return action
 
     #
-    # The worker must already have claimed this action.
+    # Worker must already have claimed the action.
     #
     _validate_claimed_action_for_execution(
         action=action,
@@ -548,6 +575,9 @@ def execute_claimed_restart_action(
         execution_error_type=(KubernetesRestartExecutionError),
     )
 
+    #
+    # Re-authorize using the user's CURRENT identity/roles.
+    #
     subject = build_policy_subject(current_user)
 
     policy_decision = authorize_deployment_restart(
@@ -562,13 +592,42 @@ def execute_claimed_restart_action(
         session=session,
     )
 
+    #
+    # IMPORTANT:
+    # A policy DENY is not an OpenTelemetry technical error.
+    #
+    # policy.evaluate tracing belongs in the policy layer.
+    #
     enforce_policy(policy_decision)
-    get_deployment_state(
-        name=payload.name,
-        namespace=payload.namespace,
-        config_mode=(settings.kubernetes_config_mode),
-        context=settings.kubernetes_context,
-    )
+
+    #
+    # Confirm the deployment currently exists.
+    #
+    with tracer.start_as_current_span("kubernetes.read") as span:
+        try:
+            span.set_attribute(
+                "kubernetes.operation",
+                "get_deployment_state",
+            )
+
+            get_deployment_state(
+                name=payload.name,
+                namespace=payload.namespace,
+                config_mode=(settings.kubernetes_config_mode),
+                context=settings.kubernetes_context,
+            )
+
+        except Exception as exc:
+            span.record_exception(exc)
+
+            span.set_status(
+                Status(
+                    StatusCode.ERROR,
+                    "kubernetes deployment read failed",
+                )
+            )
+
+            raise
 
     resource_id = f"{payload.namespace}/{payload.name}"
 
@@ -589,7 +648,7 @@ def execute_claimed_restart_action(
     session.commit()
 
     #
-    # Reload the action after the transaction boundary.
+    # Reload after transaction boundary.
     #
     executing_action = get_pending_action(
         session=session,
@@ -600,8 +659,7 @@ def execute_claimed_restart_action(
         raise KubernetesRestartExecutionError("Executing action could not be reloaded.")
 
     #
-    # The action must still be executing and still belong
-    # to this worker.
+    # Verify worker still owns this executing action.
     #
     if executing_action.state != "executing":
         raise KubernetesRestartExecutionError("Restart action is no longer executing.")
@@ -610,11 +668,14 @@ def execute_claimed_restart_action(
         raise KubernetesRestartExecutionError("Worker no longer owns the restart action.")
 
     #
-    # Generate/persist the restart execution token BEFORE
-    # the Kubernetes write.
+    # Persist restart execution token BEFORE touching
+    # Kubernetes.
     #
-    # If one already exists, ensure_execution_token()
-    # must reuse it.
+    # Crash-safety requirement:
+    #
+    # DB token commit
+    #       ↓
+    # Kubernetes PATCH
     #
     try:
         executing_action = ensure_execution_token(
@@ -626,9 +687,7 @@ def execute_claimed_restart_action(
 
         #
         # CRITICAL:
-        # Commit the token before PATCHing Kubernetes.
-        #
-        # This makes crash recovery safe.
+        # Token must be durable before external write.
         #
         session.commit()
 
@@ -643,51 +702,149 @@ def execute_claimed_restart_action(
         raise KubernetesRestartExecutionError("Restart execution token is missing.")
 
     #
-    # External Kubernetes write.
+    # -------------------------------------------------
+    # KUBERNETES WRITE + VERIFICATION
+    # -------------------------------------------------
     #
+
     try:
-        restart_deployment(
-            name=payload.name,
-            namespace=payload.namespace,
-            restart_timestamp=restart_timestamp,
-            config_mode=(settings.kubernetes_config_mode),
-            context=settings.kubernetes_context,
-        )
+        #
+        # 1. Apply restart PATCH.
+        #
+        with tracer.start_as_current_span("kubernetes.restart") as span:
+            try:
+                span.set_attribute(
+                    "kubernetes.operation",
+                    "restart_deployment",
+                )
+
+                restart_deployment(
+                    name=payload.name,
+                    namespace=payload.namespace,
+                    restart_timestamp=(restart_timestamp),
+                    config_mode=(settings.kubernetes_config_mode),
+                    context=(settings.kubernetes_context),
+                )
+
+                span.add_event("restart_patch_applied")
+
+            except KubernetesWriteError as exc:
+                #
+                # Technical Kubernetes/API failure.
+                #
+                span.record_exception(exc)
+
+                span.set_status(
+                    Status(
+                        StatusCode.ERROR,
+                        "kubernetes restart request failed",
+                    )
+                )
+
+                raise
 
         #
-        # Verify that Kubernetes actually contains the
-        # exact persisted restart token.
+        # 2. Verify exact persisted restart token
+        # exists in Kubernetes.
         #
-        verified = deployment_has_restart_token(
-            name=payload.name,
-            namespace=payload.namespace,
-            restart_timestamp=restart_timestamp,
-            config_mode=(settings.kubernetes_config_mode),
-            context=settings.kubernetes_context,
-        )
+        with tracer.start_as_current_span("kubernetes.verify_restart") as span:
+            try:
+                span.set_attribute(
+                    "kubernetes.operation",
+                    "verify_restart_token",
+                )
 
-        if not verified:
-            raise KubernetesRestartExecutionError("Restart patch could not be verified.")
+                span.set_attribute(
+                    "kubernetes.verification_mode",
+                    "normal",
+                )
+
+                verified = deployment_has_restart_token(
+                    name=payload.name,
+                    namespace=payload.namespace,
+                    restart_timestamp=(restart_timestamp),
+                    config_mode=(settings.kubernetes_config_mode),
+                    context=(settings.kubernetes_context),
+                )
+
+                span.set_attribute(
+                    "kubernetes.restart_verified",
+                    verified,
+                )
+
+                if not verified:
+                    raise (KubernetesRestartExecutionError("Restart patch could not be verified."))
+
+                span.add_event("restart_verified")
+
+            except Exception as exc:
+                span.record_exception(exc)
+
+                span.set_status(
+                    Status(
+                        StatusCode.ERROR,
+                        "restart verification failed",
+                    )
+                )
+
+                raise
 
     except KubernetesWriteError:
         #
-        # A timeout/error does not necessarily mean that
-        # Kubernetes failed to apply the patch.
+        # Important:
+        #
+        # Kubernetes timeout / transport failure does NOT
+        # prove that the PATCH was not applied.
         #
         # Reconcile against authoritative cluster state.
         #
         try:
-            verified = deployment_has_restart_token(
-                name=payload.name,
-                namespace=payload.namespace,
-                restart_timestamp=restart_timestamp,
-                config_mode=(settings.kubernetes_config_mode),
-                context=settings.kubernetes_context,
-            )
+            with tracer.start_as_current_span("kubernetes.verify_restart") as span:
+                try:
+                    span.set_attribute(
+                        "kubernetes.operation",
+                        "verify_restart_token",
+                    )
+
+                    span.set_attribute(
+                        "kubernetes.verification_mode",
+                        "reconciliation",
+                    )
+
+                    verified = deployment_has_restart_token(
+                        name=payload.name,
+                        namespace=(payload.namespace),
+                        restart_timestamp=(restart_timestamp),
+                        config_mode=(settings.kubernetes_config_mode),
+                        context=(settings.kubernetes_context),
+                    )
+
+                    span.set_attribute(
+                        "kubernetes.restart_verified",
+                        verified,
+                    )
+
+                    if verified:
+                        span.add_event("restart_verified_after_write_error")
+
+                except KubernetesWriteError as exc:
+                    span.record_exception(exc)
+
+                    span.set_status(
+                        Status(
+                            StatusCode.ERROR,
+                            "restart reconciliation failed",
+                        )
+                    )
+
+                    raise
 
         except KubernetesWriteError:
             verified = False
 
+        #
+        # We could not prove the restart happened.
+        #
         if not verified:
             _mark_restart_failed(
                 session=session,
@@ -702,6 +859,9 @@ def execute_claimed_restart_action(
             ) from None
 
     except KubernetesRestartExecutionError:
+        #
+        # PATCH returned normally but verification failed.
+        #
         _mark_restart_failed(
             session=session,
             approval_id=approval_id,
@@ -715,11 +875,15 @@ def execute_claimed_restart_action(
     #
     # At this point:
     #
-    # Kubernetes restartedAt == persisted execution_token
+    # persisted execution_token
+    #           ==
+    # Kubernetes restartedAt
     #
-    # This proves the restart REQUEST was applied.
-    # It does NOT yet prove the rollout is healthy.
+    # So restart REQUEST was successfully applied.
     #
+    # This does NOT yet prove healthy rollout.
+    #
+
     _audit_restart_applied(
         session=session,
         approval_id=approval_id,
@@ -739,13 +903,21 @@ def execute_claimed_restart_action(
     )
 
     #
-    # Persist audit records before long polling.
+    # Commit before long-running Kubernetes polling.
     #
-    # Do not leave a PostgreSQL transaction open while
-    # monitoring Kubernetes.
+    # Do not leave PostgreSQL transaction open during
+    # rollout monitoring.
     #
     session.commit()
 
+    #
+    # -------------------------------------------------
+    # ROLLOUT MONITORING
+    # -------------------------------------------------
+    #
+    # kubernetes.rollout.monitor span should live inside
+    # monitor_deployment_rollout(), not here.
+    #
     try:
         rollout_result = monitor_deployment_rollout(
             name=payload.name,
@@ -754,7 +926,7 @@ def execute_claimed_restart_action(
             poll_interval_seconds=(settings.kubernetes_rollout_poll_interval_seconds),
             max_read_failures=(settings.kubernetes_rollout_max_read_failures),
             config_mode=(settings.kubernetes_config_mode),
-            context=settings.kubernetes_context,
+            context=(settings.kubernetes_context),
         )
 
     except KubernetesResourceNotFoundError as exc:
@@ -763,18 +935,21 @@ def execute_claimed_restart_action(
             approval_id=approval_id,
             current_user=current_user,
             resource_id=resource_id,
-            failure_reason="deployment_disappeared",
+            failure_reason=("deployment_disappeared"),
         )
 
         raise KubernetesRestartExecutionError(
             "Deployment disappeared while monitoring the rollout."
         ) from exc
 
+    #
+    # Build durable result.
+    #
     result = DeploymentRestartExecutionResult(
         name=payload.name,
         namespace=payload.namespace,
         restart_applied=True,
-        rollout_outcome=rollout_result.outcome,
+        rollout_outcome=(rollout_result.outcome),
         desired_replicas=(rollout_result.desired_replicas),
         updated_replicas=(rollout_result.updated_replicas),
         ready_replicas=(rollout_result.ready_replicas),
@@ -784,7 +959,9 @@ def execute_claimed_restart_action(
     result_json = result.model_dump_json()
 
     #
-    # Rollout succeeded.
+    # -------------------------------------------------
+    # HEALTHY ROLLOUT
+    # -------------------------------------------------
     #
     if rollout_result.outcome == "healthy":
         _audit_rollout_result(
@@ -838,7 +1015,13 @@ def execute_claimed_restart_action(
         session.commit()
 
     #
-    # Restart was applied, but rollout timed out.
+    # -------------------------------------------------
+    # ROLLOUT TIMEOUT
+    # -------------------------------------------------
+    #
+    # Timeout is a domain outcome returned by the rollout
+    # monitor, not automatically an OTel infrastructure
+    # error.
     #
     elif rollout_result.outcome == "timeout":
         _audit_rollout_result(
@@ -871,7 +1054,9 @@ def execute_claimed_restart_action(
         )
 
     #
-    # Kubernetes explicitly reported rollout failure.
+    # -------------------------------------------------
+    # KUBERNETES REPORTED ROLLOUT FAILURE
+    # -------------------------------------------------
     #
     else:
         _audit_rollout_result(
@@ -903,6 +1088,9 @@ def execute_claimed_restart_action(
             "Deployment restart was applied, but Kubernetes reported that the rollout failed."
         )
 
+    #
+    # Reload final durable state.
+    #
     final_action = get_pending_action(
         session=session,
         approval_id=approval_id,
@@ -921,6 +1109,7 @@ def execute_action(
     session: Session,
     approval_id: str,
     current_user: User,
+    worker_id: str,
     settings: Settings,
 ) -> IncidentRecord | PendingAction:
     action = get_pending_action(
@@ -931,22 +1120,41 @@ def execute_action(
     if action is None:
         raise ValueError(f"Approval not found: {approval_id}")
 
-    if action.action == "create_incident":
-        return execute_claimed_incident_action(
-            session=session,
-            approval_id=approval_id,
-            current_user=current_user,
-        )
+    start = time.monotonic()
+    outcome = "failed"
 
-    if action.action == "restart_deployment":
-        return execute_claimed_restart_action(
-            session=session,
-            approval_id=approval_id,
-            current_user=current_user,
-            settings=settings,
-        )
+    try:
+        if action.action == "create_incident":
+            result = execute_claimed_incident_action(
+                session=session,
+                approval_id=approval_id,
+                current_user=current_user,
+                worker_id=worker_id,
+            )
 
-    raise UnsupportedActionError(f"Unsupported action: {action.action}")
+        elif action.action == "restart_deployment":
+            result = execute_claimed_restart_action(
+                session=session,
+                approval_id=approval_id,
+                current_user=current_user,
+                worker_id=worker_id,
+                settings=settings,
+            )
+
+        else:
+            raise UnsupportedActionError(f"Unsupported action: {action.action}")
+
+        outcome = "succeeded"
+
+        return result
+
+    finally:
+        duration = time.monotonic() - start
+
+        ACTION_EXECUTION_DURATION.labels(
+            action_type=action.action,
+            outcome=outcome,
+        ).observe(duration)
 
 
 def _mark_restart_failed(

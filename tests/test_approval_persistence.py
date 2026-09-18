@@ -148,6 +148,7 @@ def test_pending_action_can_be_approved(db_session):
     new_version = transition_action_state(
         session=db_session,
         approval_id=action.approval_id,
+        action_type=action.action,
         expected_state="pending",
         target_state="approved",
         expected_version=action.version,
@@ -175,6 +176,7 @@ def test_pending_action_can_be_marked_executed(db_session):
     approved_version = transition_action_state(
         session=db_session,
         approval_id=action.approval_id,
+        action_type=action.action,
         expected_state="pending",
         target_state="approved",
         expected_version=action.version,
@@ -318,6 +320,7 @@ def test_crash_between_incident_creation_and_approval_completion(
     approved_version = transition_action_state(
         session=db_session,
         approval_id=approval_id,
+        action_type=action.action,
         expected_state="pending",
         target_state="approved",
         expected_version=action.version,
@@ -734,6 +737,7 @@ def test_executed_approval_survives_new_database_session(db_session):
     approved_version = transition_action_state(
         session=db_session,
         approval_id=approval_id,
+        action_type=action.action,
         expected_state="pending",
         target_state="approved",
         expected_version=action.version,

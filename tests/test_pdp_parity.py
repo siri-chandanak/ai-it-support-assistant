@@ -37,7 +37,9 @@ def make_service_status_request(
             },
         ),
         context=PolicyContext(
-            attributes={},
+            attributes={
+                "policy_input_version": "1",
+            },
         ),
     )
 
