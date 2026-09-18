@@ -19,7 +19,10 @@ def test_request_logs_completion(
     assert response.status_code == 200
 
     assert any(
-        ("request_completed" in record.message and "test-123" in record.message)
+        (
+            "request_completed" in record.message
+            and getattr(record, "request_id", None) == "test-123"
+        )
         for record in caplog.records
     )
 

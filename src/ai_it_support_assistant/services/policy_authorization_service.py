@@ -1,7 +1,15 @@
+import time
+
 from sqlalchemy.orm import Session
 
 from ai_it_support_assistant.core.config import (
     get_settings,
+)
+from ai_it_support_assistant.observability.metrics import (
+    POLICY_DECISIONS,
+    POLICY_DENIALS,
+    POLICY_DURATION,
+    POLICY_ERRORS,
 )
 from ai_it_support_assistant.schemas.policy import (
     PolicyContext,
@@ -28,6 +36,11 @@ def _authorize(
 ) -> PolicyDecision:
     settings = get_settings()
 
+    request.context.attributes.setdefault(
+        "policy_input_version",
+        settings.policy_input_version,
+    )
+
     pdp = get_policy_decision_point(
         mode=settings.policy_pdp_mode,
         opa_url=settings.opa_url,
@@ -36,11 +49,46 @@ def _authorize(
         opa_max_attempts=settings.opa_max_attempts,
     )
 
-    return decide_policy(
-        pdp=pdp,
-        request=request,
-        session=session,
-    )
+    start = time.perf_counter()
+
+    try:
+        decision = decide_policy(
+            pdp=pdp,
+            request=request,
+            session=session,
+        )
+
+    except Exception:
+        POLICY_ERRORS.labels(
+            action=request.action,
+            pdp_mode=settings.policy_pdp_mode,
+        ).inc()
+
+        raise
+
+    finally:
+        POLICY_DURATION.labels(
+            action=request.action,
+            pdp_mode=settings.policy_pdp_mode,
+        ).observe(time.perf_counter() - start)
+
+    result = "allow" if decision.allowed else "deny"
+
+    POLICY_DECISIONS.labels(
+        action=request.action,
+        result=result,
+        reason_code=decision.reason_code,
+        pdp_mode=settings.policy_pdp_mode,
+    ).inc()
+
+    if not decision.allowed:
+        POLICY_DENIALS.labels(
+            action=request.action,
+            reason_code=decision.reason_code,
+            pdp_mode=settings.policy_pdp_mode,
+        ).inc()
+
+    return decision
 
 
 def build_policy_subject(

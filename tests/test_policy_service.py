@@ -570,6 +570,6 @@ def test_policy_evaluation_failure_is_logged(
             )
 
     assert "policy_evaluation_failed" in caplog.text
-    assert "username=support" in caplog.text
     assert "action=kubernetes.read" in caplog.text
     assert "resource_type=kubernetes" in caplog.text
+    assert "failure_type=database_error" in caplog.text

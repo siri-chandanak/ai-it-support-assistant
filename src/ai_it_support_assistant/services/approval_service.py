@@ -3,6 +3,17 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from ai_it_support_assistant.core.request_context import (
+    get_request_id,
+)
+from ai_it_support_assistant.observability.metrics import (
+    ACTION_APPROVALS,
+    ACTION_PROPOSALS,
+    ACTION_REJECTIONS,
+)
+from ai_it_support_assistant.observability.tracing import (
+    get_current_trace_id,
+)
 from ai_it_support_assistant.repositories.approval_repository import (
     get_pending_action,
     save_pending_action,
@@ -72,12 +83,20 @@ def create_pending_action(
         resource_id=None,
         execution_token=None,
         failure_reason=None,
+        origin_trace_id=get_current_trace_id(),
+        origin_request_id=get_request_id(),
     )
 
     save_pending_action(
         session=session,
         action=action,
     )
+
+    # Prometheus:
+    # The action proposal was successfully persisted.
+    ACTION_PROPOSALS.labels(
+        action_type=action.action,
+    ).inc()
 
     return action
 
@@ -107,6 +126,7 @@ def approve_pending_action(
     transition_action_state(
         session=session,
         approval_id=approval_id,
+        action_type=action.action,
         expected_state="pending",
         target_state="approved",
         expected_version=action.version,
@@ -119,6 +139,13 @@ def approve_pending_action(
 
     if updated_action is None:
         raise ApprovalNotFoundError("Approval request disappeared after update.")
+
+    # Prometheus:
+    # Count only after the transition succeeded
+    # and we successfully read the updated action.
+    ACTION_APPROVALS.labels(
+        action_type=updated_action.action,
+    ).inc()
 
     return updated_action
 
@@ -148,6 +175,7 @@ def reject_pending_action(
     transition_action_state(
         session=session,
         approval_id=approval_id,
+        action_type=action.action,
         expected_state="pending",
         target_state="rejected",
         expected_version=action.version,
@@ -162,6 +190,12 @@ def reject_pending_action(
 
     if updated_action is None:
         raise ApprovalNotFoundError(f"Approval disappeared after rejection: {approval_id}")
+
+    # Prometheus:
+    # Count only after successful rejection transition.
+    ACTION_REJECTIONS.labels(
+        action_type=updated_action.action,
+    ).inc()
 
     return updated_action
 

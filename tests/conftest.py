@@ -1,4 +1,9 @@
 import os
+
+os.environ["OTEL_ENABLED"] = "false"
+os.environ["METRICS_ENABLED"] = "true"
+os.environ["POLICY_PDP_MODE"] = "local"
+
 from collections.abc import Generator
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -6,6 +11,11 @@ from uuid import UUID, uuid4
 import pytest
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 from sqlalchemy.orm import Session
 
 from ai_it_support_assistant.api.dependencies.auth import (
@@ -20,6 +30,31 @@ from ai_it_support_assistant.schemas.policy import (
     PolicyResource,
     PolicySubject,
 )
+
+
+@pytest.fixture
+def span_exporter() -> Generator[InMemorySpanExporter, None, None]:
+    exporter = InMemorySpanExporter()
+
+    yield exporter
+
+    exporter.clear()
+
+
+@pytest.fixture
+def test_tracer(
+    span_exporter: InMemorySpanExporter,
+):
+    provider = TracerProvider()
+
+    provider.add_span_processor(SimpleSpanProcessor(span_exporter))
+
+    tracer = provider.get_tracer("ai_it_support_assistant.tests")
+
+    yield tracer
+
+    provider.force_flush()
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(PROJECT_ROOT / ".env")

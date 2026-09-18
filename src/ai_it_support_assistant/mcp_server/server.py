@@ -14,6 +14,13 @@ from ai_it_support_assistant.mcp_server.auth import (
 from ai_it_support_assistant.mcp_server.identity import (
     get_mcp_current_user,
 )
+from ai_it_support_assistant.observability.decorators import (
+    observe_mcp_resource,
+    observe_mcp_tool,
+)
+from ai_it_support_assistant.observability.metrics import (
+    MCP_TOOL_DENIALS,
+)
 from ai_it_support_assistant.schemas.auth import User
 from ai_it_support_assistant.schemas.incident import (
     IncidentCreateRequest,
@@ -50,6 +57,7 @@ def register_mcp_capabilities(
     current_user_provider: Callable[[], User],
 ) -> None:
     @server.tool()
+    @observe_mcp_tool("get_service_status")
     def get_service_status(
         service_name: str,
     ) -> dict[str, object]:
@@ -65,6 +73,11 @@ def register_mcp_capabilities(
                 session=session,
             )
 
+            if not policy_decision.allowed:
+                MCP_TOOL_DENIALS.labels(
+                    tool="get_service_status",
+                ).inc()
+
             enforce_policy(policy_decision)
 
         result = get_live_service_status(
@@ -74,8 +87,12 @@ def register_mcp_capabilities(
         return result.model_dump()
 
     @server.tool()
+    @observe_mcp_tool("get_kubernetes_state")
     def get_kubernetes_state(
-        resource_type: Literal["deployment", "pod"],
+        resource_type: Literal[
+            "deployment",
+            "pod",
+        ],
         resource_name: str,
         namespace: str,
     ) -> dict[str, object]:
@@ -94,19 +111,25 @@ def register_mcp_capabilities(
                 session=session,
             )
 
+            if not policy_decision.allowed:
+                MCP_TOOL_DENIALS.labels(
+                    tool="get_kubernetes_state",
+                ).inc()
+
             enforce_policy(policy_decision)
 
         result = get_kubernetes_resource_state(
             resource_type=resource_type,
             name=resource_name,
             namespace=namespace,
-            config_mode=settings.kubernetes_config_mode,
-            context=settings.kubernetes_context,
+            config_mode=(settings.kubernetes_config_mode),
+            context=(settings.kubernetes_context),
         )
 
         return result
 
     @server.tool()
+    @observe_mcp_tool("search_knowledge")
     def search_knowledge(
         query: str,
         top_k: int = 3,
@@ -118,19 +141,20 @@ def register_mcp_capabilities(
         chunks = retrieve_chunks(
             query=query,
             top_k=top_k,
-            embedding_model_name=settings.embedding_model_name,
-            embedding_cache_enabled=settings.embedding_cache_enabled,
-            retrieval_cache_enabled=settings.retrieval_cache_enabled,
+            embedding_model_name=(settings.embedding_model_name),
+            embedding_cache_enabled=(settings.embedding_cache_enabled),
+            retrieval_cache_enabled=(settings.retrieval_cache_enabled),
             qdrant_url=settings.qdrant_url,
-            collection_name=settings.qdrant_collection_name,
-            qdrant_timeout_seconds=settings.qdrant_timeout_seconds,
-            qdrant_max_retries=settings.qdrant_max_attempts,
+            collection_name=(settings.qdrant_collection_name),
+            qdrant_timeout_seconds=(settings.qdrant_timeout_seconds),
+            qdrant_max_retries=(settings.qdrant_max_attempts),
             user_roles=current_user.roles,
         )
 
         return [chunk.model_dump() for chunk in chunks]
 
     @server.tool()
+    @observe_mcp_tool("propose_incident")
     def propose_incident(
         title: str,
         description: str,
@@ -158,13 +182,14 @@ def register_mcp_capabilities(
 
         return {
             "approval_required": True,
-            "approval_id": pending.approval_id,
+            "approval_id": (pending.approval_id),
             "state": pending.state,
             "action": pending.action,
-            "proposed_incident": incident_request.model_dump(),
+            "proposed_incident": (incident_request.model_dump()),
         }
 
     @server.tool()
+    @observe_mcp_tool("propose_restart_deployment")
     def propose_restart_deployment(
         deployment_name: str,
         namespace: str,
@@ -180,7 +205,7 @@ def register_mcp_capabilities(
             pending, restart_payload = prepare_restart_action(
                 session=session,
                 current_user=current_user,
-                deployment_name=deployment_name,
+                deployment_name=(deployment_name),
                 namespace=namespace,
                 kubernetes_write_enabled=(settings.kubernetes_write_enabled),
                 kubernetes_restart_allowed_namespaces=(
@@ -192,14 +217,15 @@ def register_mcp_capabilities(
                 kubernetes_config_mode=(settings.kubernetes_config_mode),
                 kubernetes_context=(settings.kubernetes_context),
             )
+
             session.commit()
 
         return {
             "approval_required": True,
-            "approval_id": pending.approval_id,
+            "approval_id": (pending.approval_id),
             "state": pending.state,
             "action": pending.action,
-            "proposed_restart": restart_payload.model_dump(),
+            "proposed_restart": (restart_payload.model_dump()),
         }
 
     @server.resource(
@@ -207,6 +233,7 @@ def register_mcp_capabilities(
         name="action_status",
         description=("Read the current status of an authorized pending action."),
     )
+    @observe_mcp_resource("action_status")
     def get_action_status(
         approval_id: str,
     ) -> dict[str, object]:
@@ -216,7 +243,7 @@ def register_mcp_capabilities(
             action = get_pending_action_for_user(
                 session=session,
                 approval_id=approval_id,
-                username=current_user.username,
+                username=(current_user.username),
                 roles=current_user.roles,
             )
 
@@ -227,13 +254,13 @@ def register_mcp_capabilities(
             result = json.loads(action.result_json) if action.result_json else None
 
             return {
-                "approval_id": action.approval_id,
+                "approval_id": (action.approval_id),
                 "action": action.action,
-                "requested_by": action.requested_by,
+                "requested_by": (action.requested_by),
                 "state": action.state,
                 "payload": payload,
-                "resource_id": action.resource_id,
-                "failure_reason": action.failure_reason,
+                "resource_id": (action.resource_id),
+                "failure_reason": (action.failure_reason),
                 "result": result,
                 "version": action.version,
             }
@@ -241,13 +268,16 @@ def register_mcp_capabilities(
 
 def create_mcp_server(
     *,
-    current_user_provider: Callable[[], User] = get_mcp_current_user,
+    current_user_provider: Callable[
+        [],
+        User,
+    ] = get_mcp_current_user,
 ) -> MCPServer:
     settings = get_settings()
 
     server = MCPServer(
         "AI IT Support Assistant",
-        token_verifier=ApplicationTokenVerifier(),
+        token_verifier=(ApplicationTokenVerifier()),
         auth=AuthSettings(
             issuer_url=AnyHttpUrl(
                 settings.mcp_issuer_url,
@@ -262,7 +292,7 @@ def create_mcp_server(
 
     register_mcp_capabilities(
         server=server,
-        current_user_provider=current_user_provider,
+        current_user_provider=(current_user_provider),
     )
 
     return server

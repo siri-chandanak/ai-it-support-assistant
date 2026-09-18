@@ -1,3 +1,10 @@
+import time
+
+from ai_it_support_assistant.observability.metrics import (
+    AGENT_DURATION,
+    AGENT_ROUTE,
+    AGENT_ROUTING_FAILURES,
+)
 from ai_it_support_assistant.schemas.agent import (
     AgentDecision,
     AgentRoutingOutput,
@@ -141,14 +148,9 @@ def route_agent_request(
     timeout_seconds: float,
     max_retries: int,
 ) -> AgentDecision:
+    start = time.perf_counter()
     if not question.strip():
         raise AgentRoutingError("Question cannot be empty.")
-
-    client = get_openai_client(
-        api_key,
-        timeout_seconds,
-        max_retries,
-    )
 
     instructions = """
 You are a routing component for an IT support assistant.
@@ -351,29 +353,57 @@ An explicit request to actually restart a Deployment should use
 """.strip()
 
     try:
-        response = client.responses.create(
-            model=model_name,
-            instructions=instructions,
-            input=question,
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "agent_decision",
-                    "strict": True,
-                    "schema": AgentRoutingOutput.model_json_schema(),
-                }
-            },
+        client = get_openai_client(
+            api_key,
+            timeout_seconds,
+            max_retries,
         )
+
+        try:
+            response = client.responses.create(
+                model=model_name,
+                instructions=instructions,
+                input=question,
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": "agent_decision",
+                        "strict": True,
+                        "schema": AgentRoutingOutput.model_json_schema(),
+                    }
+                },
+            )
+        except Exception as exc:
+            raise AgentRoutingError("Agent routing failed.") from exc
+
+        try:
+            routing_output = AgentRoutingOutput.model_validate_json(response.output_text)
+        except Exception as exc:
+            raise AgentRoutingError("Agent returned invalid routing output.") from exc
+
+        validate_agent_decision(routing_output)
+
+        decision = AgentDecision.model_validate(routing_output.model_dump())
+
+        AGENT_ROUTE.labels(
+            action=decision.action,
+        ).inc()
+
+        return decision
+
+    except AgentRoutingError:
+        # Includes:
+        # - OpenAI routing failure
+        # - invalid structured output
+        # - invalid routing arguments
+        AGENT_ROUTING_FAILURES.inc()
+        raise
+
     except Exception as exc:
-        raise AgentRoutingError("Agent routing failed.") from exc
+        # Defensive catch for unexpected routing failures.
+        AGENT_ROUTING_FAILURES.inc()
 
-    try:
-        routing_output = AgentRoutingOutput.model_validate_json(response.output_text)
-    except Exception as exc:
-        raise AgentRoutingError("Agent returned invalid routing output.") from exc
+        raise AgentRoutingError("Unexpected agent routing failure.") from exc
 
-    validate_agent_decision(routing_output)
-
-    decision = AgentDecision.model_validate(routing_output.model_dump())
-
-    return decision
+    finally:
+        AGENT_DURATION.observe(time.perf_counter() - start)

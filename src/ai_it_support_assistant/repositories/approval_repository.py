@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import (
     and_,
+    func,
     or_,
     select,
     update,
@@ -10,6 +11,9 @@ from sqlalchemy.orm import Session
 
 from ai_it_support_assistant.models.incident import (
     PendingActionModel,
+)
+from ai_it_support_assistant.observability.metrics import (
+    ACTION_STATE_TRANSITIONS,
 )
 from ai_it_support_assistant.schemas.approval import (
     PendingAction,
@@ -59,6 +63,8 @@ def save_pending_action(
         incident_severity=(incident.severity if incident is not None else None),
         service_name=(incident.service_name if incident is not None else None),
         incident_id=(action.resource_id if action.action == "create_incident" else None),
+        origin_trace_id=action.origin_trace_id,
+        origin_request_id=action.origin_request_id,
     )
 
     session.add(model)
@@ -197,6 +203,7 @@ def transition_action_state(
     *,
     session: Session,
     approval_id: str,
+    action_type: str,
     expected_state: str,
     target_state: str,
     expected_version: int,
@@ -225,6 +232,12 @@ def transition_action_state(
         raise ConcurrentActionUpdateError("Action state changed concurrently.")
 
     session.flush()
+
+    ACTION_STATE_TRANSITIONS.labels(
+        action_type=action_type,
+        from_state=expected_state,
+        to_state=target_state,
+    ).inc()
 
     return expected_version + 1
 
@@ -590,3 +603,14 @@ def update_action_heartbeat(
     session.flush()
 
     return result.rowcount == 1
+
+
+def count_actions_by_state(
+    session: Session,
+    state: str,
+) -> int:
+    count = session.scalar(
+        select(func.count()).select_from(PendingAction).where(PendingAction.state == state)
+    )
+
+    return int(count or 0)

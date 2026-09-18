@@ -53,6 +53,9 @@ class PendingAction(BaseModel):
 
     result_json: str | None = None
 
+    origin_trace_id: str | None = None
+    origin_request_id: str | None = None
+
 
 class ApprovalExecuteRequest(BaseModel):
     model_config = ConfigDict(
