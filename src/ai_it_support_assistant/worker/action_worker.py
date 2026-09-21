@@ -1,4 +1,5 @@
 import logging
+import signal
 import socket
 import time
 from datetime import UTC, datetime, timedelta
@@ -50,6 +51,9 @@ from ai_it_support_assistant.schemas.approval import (
 from ai_it_support_assistant.schemas.auth import User
 from ai_it_support_assistant.services.action_execution_service import (
     execute_claimed_incident_action,
+)
+from ai_it_support_assistant.services.action_execution_service import (
+    execute_claimed_restart_action as execute_restart_action_service,
 )
 from ai_it_support_assistant.services.action_payload_service import (
     parse_incident_payload,
@@ -133,7 +137,7 @@ def record_terminal_action_metric(
     if action.state == "failed":
         WORKER_ACTIONS_FAILED.labels(
             action_type=action.action,
-            reason=get_worker_metric_failure_reason(action.failure_reason),
+            failure_reason=get_worker_metric_failure_reason(action.failure_reason),
         ).inc()
 
         return "failure"
@@ -314,91 +318,91 @@ def reconcile_stale_incident_action(
         session.commit()
 
 
-def execute_claimed_restart_action(
-    *,
-    action: PendingAction,
-    worker_id: str,
-    settings: Settings,
-    session: Session,
-) -> None:
-    if action is None:
-        raise RuntimeError("Pending action disappeared during reconciliation.")
-    _current_user = load_and_authorize_action_user(
-        action=action,
-        session=session,
-    )
+# def execute_claimed_restart_action(
+#     *,
+#     action: PendingAction,
+#     worker_id: str,
+#     settings: Settings,
+#     session: Session,
+# ) -> None:
+#     if action is None:
+#         raise RuntimeError("Pending action disappeared during reconciliation.")
+#     _current_user = load_and_authorize_action_user(
+#         action=action,
+#         session=session,
+#     )
 
-    payload = parse_restart_action(
-        action=action,
-    )
+#     payload = parse_restart_action(
+#         action=action,
+#     )
 
-    def heartbeat() -> None:
-        with SessionLocal() as heartbeat_session:
-            updated = update_action_heartbeat(
-                session=heartbeat_session,
-                approval_id=action.approval_id,
-                worker_id=worker_id,
-            )
+#     def heartbeat() -> None:
+#         with SessionLocal() as heartbeat_session:
+#             updated = update_action_heartbeat(
+#                 session=heartbeat_session,
+#                 approval_id=action.approval_id,
+#                 worker_id=worker_id,
+#             )
 
-            if updated:
-                heartbeat_session.commit()
-            else:
-                heartbeat_session.rollback()
+#             if updated:
+#                 heartbeat_session.commit()
+#             else:
+#                 heartbeat_session.rollback()
 
-    result = monitor_deployment_rollout(
-        name=payload.name,
-        namespace=payload.namespace,
-        timeout_seconds=(settings.restart_timeout_seconds),
-        poll_interval_seconds=(settings.restart_poll_interval_seconds),
-        max_read_failures=(settings.restart_max_read_failures),
-        config_mode=settings.kubernetes_config_mode,
-        context=settings.kubernetes_context,
-        heartbeat_callback=heartbeat,
-    )
+#     result = monitor_deployment_rollout(
+#         name=payload.name,
+#         namespace=payload.namespace,
+#         timeout_seconds=settings.kubernetes_rollout_timeout_seconds,
+#         poll_interval_seconds=settings.kubernetes_rollout_poll_interval_seconds,
+#         max_read_failures=settings.kubernetes_rollout_max_read_failures,
+#         config_mode=settings.kubernetes_config_mode,
+#         context=settings.kubernetes_context,
+#         heartbeat_callback=heartbeat,
+#     )
 
-    current_action = get_pending_action(
-        session=session,
-        approval_id=action.approval_id,
-    )
+#     current_action = get_pending_action(
+#         session=session,
+#         approval_id=action.approval_id,
+#     )
 
-    if current_action is None:
-        raise RuntimeError("Restart action disappeared during execution.")
+#     if current_action is None:
+#         raise RuntimeError("Restart action disappeared during execution.")
 
-    resource_id = f"{payload.namespace}/{payload.name}"
+#     resource_id = f"{payload.namespace}/{payload.name}"
 
-    if result.outcome == "healthy":
-        mark_action_succeeded(
-            session=session,
-            approval_id=current_action.approval_id,
-            expected_version=current_action.version,
-            resource_id=resource_id,
-            result_json=result.model_dump_json(),
-        )
+#     if result.outcome == "healthy":
+#         mark_action_succeeded(
+#             session=session,
+#             approval_id=current_action.approval_id,
+#             expected_version=current_action.version,
+#             resource_id=resource_id,
+#             result_json=result.model_dump_json(),
+#         )
 
-        session.commit()
-        return
+#         session.commit()
+#         return
 
-    if result.outcome == "timeout":
-        mark_action_failed(
-            session=session,
-            approval_id=current_action.approval_id,
-            expected_version=current_action.version,
-            failure_reason="restart_rollout_timeout",
-            result_json=result.model_dump_json(),
-        )
+#     if result.outcome == "timeout":
+#         mark_action_failed(
+#             session=session,
+#             approval_id=current_action.approval_id,
+#             expected_version=current_action.version,
+#             failure_reason="restart_rollout_timeout",
+#             result_json=result.model_dump_json(),
+#         )
 
-        session.commit()
-        return
+#         session.commit()
+#         return
 
-    mark_action_failed(
-        session=session,
-        approval_id=current_action.approval_id,
-        expected_version=current_action.version,
-        failure_reason="restart_rollout_failed",
-        result_json=result.model_dump_json(),
-    )
+#     mark_action_failed(
+#         session=session,
+#         approval_id=current_action.approval_id,
+#         expected_version=current_action.version,
+#         failure_reason="restart_rollout_failed",
+#         result_json=result.model_dump_json(),
+#     )
 
-    session.commit()
+#     session.commit()
 
 
 def reconcile_stale_restart_action(
@@ -471,7 +475,7 @@ def reconcile_stale_restart_action(
         restart_deployment(
             name=payload.name,
             namespace=payload.namespace,
-            execution_token=execution_token,
+            restart_timestamp=execution_token,
             config_mode=(settings.kubernetes_config_mode),
             context=settings.kubernetes_context,
         )
@@ -589,11 +593,12 @@ def execute_claimed_action(
             )
 
         elif action.action == "restart_deployment":
-            execute_claimed_restart_action(
-                action=action,
+            execute_restart_action_service(
+                session=session,
+                approval_id=action.approval_id,
+                current_user=current_user,
                 worker_id=worker_id,
                 settings=settings,
-                session=session,
             )
 
         else:
@@ -987,9 +992,41 @@ def run_action_worker(
     """
     Continuously recover stale work and process
     newly approved actions.
+
+    Handles SIGTERM/SIGINT gracefully so Kubernetes
+    can stop the worker without immediately killing
+    an in-progress worker iteration.
     """
 
     worker_id = create_worker_id()
+
+    shutdown_requested = False
+
+    def handle_shutdown_signal(
+        signum: int,
+        _frame: object,
+    ) -> None:
+        nonlocal shutdown_requested
+
+        logger.info(
+            "action_worker_shutdown_requested",
+            extra={
+                "worker_id": worker_id,
+                "signal": signum,
+            },
+        )
+
+        shutdown_requested = True
+
+    signal.signal(
+        signal.SIGTERM,
+        handle_shutdown_signal,
+    )
+
+    signal.signal(
+        signal.SIGINT,
+        handle_shutdown_signal,
+    )
 
     logger.info(
         "action_worker_started",
@@ -998,65 +1035,68 @@ def run_action_worker(
         },
     )
 
-    try:
-        while True:
-            try:
-                # Refresh DB-backed Prometheus gauges before
-                # processing this worker iteration.
-                with SessionLocal() as session:
-                    refresh_action_queue_metrics(
-                        session=session,
-                    )
-
-                recovered = reconcile_stale_actions(
-                    worker_id=worker_id,
-                    settings=settings,
+    while not shutdown_requested:
+        try:
+            # Refresh DB-backed Prometheus gauges before
+            # processing this worker iteration.
+            with SessionLocal() as session:
+                refresh_action_queue_metrics(
+                    session=session,
                 )
 
-                processed = run_worker_once(
-                    worker_id=worker_id,
-                    settings=settings,
+            recovered = reconcile_stale_actions(
+                worker_id=worker_id,
+                settings=settings,
+            )
+
+            processed = run_worker_once(
+                worker_id=worker_id,
+                settings=settings,
+            )
+
+            # Action states may have changed during this iteration:
+            #
+            # approved -> executing
+            # executing -> succeeded
+            # executing -> failed
+            #
+            # Refresh metrics again so Prometheus reflects
+            # the latest PostgreSQL state.
+            with SessionLocal() as session:
+                refresh_action_queue_metrics(
+                    session=session,
                 )
 
-                # Action states may have changed during this iteration:
-                #
-                # approved -> executing
-                # executing -> succeeded
-                # executing -> failed
-                #
-                # Refresh metrics again so Prometheus reflects
-                # the latest PostgreSQL state.
-                with SessionLocal() as session:
-                    refresh_action_queue_metrics(
-                        session=session,
-                    )
+            logger.debug(
+                "action_worker_iteration_completed",
+                extra={
+                    "worker_id": worker_id,
+                    "stale_actions_recovered": recovered,
+                    "approved_actions_processed": processed,
+                },
+            )
 
-                logger.debug(
-                    "action_worker_iteration_completed",
-                    extra={
-                        "worker_id": worker_id,
-                        "stale_actions_recovered": recovered,
-                        "approved_actions_processed": processed,
-                    },
-                )
+        except Exception:
+            logger.exception(
+                "action_worker_iteration_failed",
+                extra={
+                    "worker_id": worker_id,
+                },
+            )
 
-            except Exception:
-                logger.exception(
-                    "action_worker_iteration_failed",
-                    extra={
-                        "worker_id": worker_id,
-                    },
-                )
+        if shutdown_requested:
+            break
 
-            time.sleep(settings.action_worker_poll_interval_seconds)
-
-    except KeyboardInterrupt:
-        logger.info(
-            "action_worker_stopping",
-            extra={
-                "worker_id": worker_id,
-            },
+        time.sleep(
+            settings.action_worker_poll_interval_seconds,
         )
+
+    logger.info(
+        "action_worker_stopped",
+        extra={
+            "worker_id": worker_id,
+        },
+    )
 
 
 def update_queue_depth_metric(

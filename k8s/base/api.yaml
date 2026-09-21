@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-support-api
+  namespace: ai-support
+  labels:
+    app: ai-support-api
+
+spec:
+  replicas: 1
+  
+  strategy:
+    type: Recreate
+
+  selector:
+    matchLabels:
+      app: ai-support-api
+
+  template:
+    metadata:
+      labels:
+        app: ai-support-api
+
+    spec:
+      serviceAccountName: ai-support-api-sa
+
+      containers:
+        - name: api
+
+          image: ai-it-support-assistant:latest
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 8000
+
+          envFrom:
+            - configMapRef:
+                name: ai-support-config
+
+            - secretRef:
+                name: ai-support-secrets
+
+          env:
+            - name: KUBERNETES_WRITE_ENABLED
+              value: "true"
+            - name: KUBERNETES_RESTART_ALLOWED_NAMESPACES
+              value: "ai-support"
+            - name: KUBERNETES_RESTART_ALLOWED_DEPLOYMENTS
+              value: "restart-test"
+
+          startupProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+
+          readinessProbe:
+            httpGet:
+              path: /api/v1/ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-support-api
+  namespace: ai-support
+
+spec:
+  selector:
+    app: ai-support-api
+
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+
+  type: ClusterIP

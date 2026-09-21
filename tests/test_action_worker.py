@@ -956,7 +956,7 @@ def test_restart_recovery_reuses_same_token(
     # Critical idempotency assertion:
     # recovery reuses the existing token.
     #
-    assert restart_kwargs["execution_token"] == "T1"
+    assert restart_kwargs["restart_timestamp"] == "T1"
 
     mock_monitor.assert_called_once()
 

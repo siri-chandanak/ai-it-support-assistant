@@ -1,0 +1,177 @@
+apiVersion: v1
+data:
+  authorization.rego: "package ai_it_support.authz\r\n\r\nimport rego.v1\r\n\r\n#
+    ============================================================\r\n# POLICY INPUT
+    / METADATA HELPERS\r\n# ============================================================\r\n\r\ncontext_attributes
+    := object.get(\r\n\tobject.get(input, \"context\", {}),\r\n\t\"attributes\",\r\n\t{},\r\n)\r\n\r\npolicy_input_version
+    := object.get(\r\n\tcontext_attributes,\r\n\t\"policy_input_version\",\r\n\t\"\",\r\n)\r\n\r\nsupported_policy_input_version
+    if {\r\n\tpolicy_input_version == \"1\"\r\n}\r\n\r\nsubject_enabled if {\r\n\tnot
+    input.subject.disabled\r\n}\r\n\r\nknown_action if {\r\n\tinput.action == \"service_status.read\"\r\n}\r\n\r\nknown_action
+    if {\r\n\tinput.action == \"kubernetes.read\"\r\n}\r\n\r\nknown_action if {\r\n\tinput.action
+    == \"incident.create\"\r\n}\r\n\r\nknown_action if {\r\n\tinput.action == \"deployment.restart\"\r\n}\r\n\r\n#
+    ============================================================\r\n# DEFAULT\r\n#
+    ============================================================\r\n\r\ndefault raw_decision
+    := {\r\n\t\"allowed\": false,\r\n\t\"reason_code\": \"default_deny\",\r\n\t\"reason\":
+    \"No policy allowed the request.\",\r\n\t\"policy_id\": \"default-deny-v1\",\r\n\t\"obligations\":
+    [],\r\n\t\"trace\": [],\r\n}\r\n\r\ndecision := object.union(\r\n\traw_decision,\r\n\t{\r\n\t\t\"policy_version\":
+    data.policy_metadata.version,\r\n\t\t\"bundle_revision\": data.policy_metadata.revision,\r\n\t},\r\n)\r\n\r\n#
+    ============================================================\r\n# POLICY INPUT
+    VERSION\r\n# ============================================================\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": false,\r\n\t\"reason_code\": \"unsupported_policy_input_version\",\r\n\t\"reason\":
+    \"Policy input version is unsupported.\",\r\n\t\"policy_id\": \"global-input-version-v1\",\r\n\t\"obligations\":
+    [],\r\n\t\"trace\": [],\r\n} if {\r\n\tnot supported_policy_input_version\r\n}\r\n\r\n#
+    ============================================================\r\n# GLOBAL SUBJECT
+    POLICY\r\n# ============================================================\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": false,\r\n\t\"reason_code\": \"subject_disabled\",\r\n\t\"reason\":
+    \"Disabled subjects are not allowed.\",\r\n\t\"policy_id\": \"global-subject-policy-v1\",\r\n\t\"obligations\":
+    [],\r\n\t\"trace\": [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.subject.disabled\r\n}\r\n\r\n#
+    ============================================================\r\n# GLOBAL UNKNOWN
+    ACTION\r\n# ============================================================\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": false,\r\n\t\"reason_code\": \"unknown_action\",\r\n\t\"reason\":
+    \"Unknown policy action.\",\r\n\t\"policy_id\": \"global-permission-v1\",\r\n\t\"obligations\":
+    [],\r\n\t\"trace\": [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tsubject_enabled\r\n\tnot
+    known_action\r\n}\r\n\r\n# ============================================================\r\n#
+    GLOBAL CAPABILITY PERMISSION DENIALS\r\n# ============================================================\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": false,\r\n\t\"reason_code\": \"missing_permission\",\r\n\t\"reason\":
+    \"Required capability permission is missing.\",\r\n\t\"policy_id\": \"global-permission-v1\",\r\n\t\"obligations\":
+    [],\r\n\t\"trace\": [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.action
+    == \"service_status.read\"\r\n\tsubject_enabled\r\n\tnot \"service-status:read\"
+    in input.subject.permissions\r\n}\r\n\r\nraw_decision := {\r\n\t\"allowed\": false,\r\n\t\"reason_code\":
+    \"missing_permission\",\r\n\t\"reason\": \"Required capability permission is missing.\",\r\n\t\"policy_id\":
+    \"global-permission-v1\",\r\n\t\"obligations\": [],\r\n\t\"trace\": [],\r\n} if
+    {\r\n\tsupported_policy_input_version\r\n\tinput.action == \"kubernetes.read\"\r\n\tsubject_enabled\r\n\tnot
+    \"kubernetes:read\" in input.subject.permissions\r\n}\r\n\r\nraw_decision := {\r\n\t\"allowed\":
+    false,\r\n\t\"reason_code\": \"missing_permission\",\r\n\t\"reason\": \"Required
+    capability permission is missing.\",\r\n\t\"policy_id\": \"global-permission-v1\",\r\n\t\"obligations\":
+    [],\r\n\t\"trace\": [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.action
+    == \"incident.create\"\r\n\tsubject_enabled\r\n\tnot \"incident:create\" in input.subject.permissions\r\n}\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": false,\r\n\t\"reason_code\": \"missing_permission\",\r\n\t\"reason\":
+    \"Required capability permission is missing.\",\r\n\t\"policy_id\": \"global-permission-v1\",\r\n\t\"obligations\":
+    [],\r\n\t\"trace\": [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.action
+    == \"deployment.restart\"\r\n\tsubject_enabled\r\n\tnot \"deployment:restart\"
+    in input.subject.permissions\r\n}\r\n\r\n# ============================================================\r\n#
+    SERVICE STATUS READ\r\n# ============================================================\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": true,\r\n\t\"reason_code\": \"allowed\",\r\n\t\"reason\":
+    \"Service status read allowed.\",\r\n\t\"policy_id\": \"service-status-read-v1\",\r\n\t\"obligations\":
+    [],\r\n\t\"trace\": [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.action
+    == \"service_status.read\"\r\n\tsubject_enabled\r\n\t\"service-status:read\" in
+    input.subject.permissions\r\n}\r\n\r\n# ============================================================\r\n#
+    KUBERNETES READ\r\n# ============================================================\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": false,\r\n\t\"reason_code\": \"namespace_access_denied\",\r\n\t\"reason\":
+    \"Subject cannot read this namespace.\",\r\n\t\"policy_id\": \"kubernetes-read-v1\",\r\n\t\"obligations\":
+    [],\r\n\t\"trace\": [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.action
+    == \"kubernetes.read\"\r\n\tsubject_enabled\r\n\t\"kubernetes:read\" in input.subject.permissions\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"has_namespace_grant\",\r\n\t\tfalse,\r\n\t)
+    != true\r\n}\r\n\r\nraw_decision := {\r\n\t\"allowed\": true,\r\n\t\"reason_code\":
+    \"allowed\",\r\n\t\"reason\": \"Kubernetes read allowed.\",\r\n\t\"policy_id\":
+    \"kubernetes-read-v1\",\r\n\t\"obligations\": [],\r\n\t\"trace\": [],\r\n} if
+    {\r\n\tsupported_policy_input_version\r\n\tinput.action == \"kubernetes.read\"\r\n\tsubject_enabled\r\n\t\"kubernetes:read\"
+    in input.subject.permissions\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"has_namespace_grant\",\r\n\t\tfalse,\r\n\t)
+    == true\r\n}\r\n\r\n# ============================================================\r\n#
+    INCIDENT CREATE\r\n# ============================================================\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": true,\r\n\t\"reason_code\": \"allowed\",\r\n\t\"reason\":
+    \"Incident creation allowed.\",\r\n\t\"policy_id\": \"incident-create-v1\",\r\n\t\"obligations\":
+    [\r\n\t\t\"explicit_approval\",\r\n\t\t\"audit_execution\",\r\n\t],\r\n\t\"trace\":
+    [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.action == \"incident.create\"\r\n\tsubject_enabled\r\n\t\"incident:create\"
+    in input.subject.permissions\r\n}\r\n\r\n# ============================================================\r\n#
+    DEPLOYMENT RESTART\r\n# ============================================================\r\n\r\n#
+    ------------------------------------------------------------\r\n# Global Kubernetes
+    write kill-switch\r\n# ------------------------------------------------------------\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": false,\r\n\t\"reason_code\": \"kubernetes_writes_disabled\",\r\n\t\"reason\":
+    \"Kubernetes write actions are disabled.\",\r\n\t\"policy_id\": \"deployment-restart-v1\",\r\n\t\"obligations\":
+    [],\r\n\t\"trace\": [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.action
+    == \"deployment.restart\"\r\n\tsubject_enabled\r\n\t\"deployment:restart\" in
+    input.subject.permissions\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"writes_enabled\",\r\n\t\tfalse,\r\n\t)
+    != true\r\n}\r\n\r\n# ------------------------------------------------------------\r\n#
+    Global namespace allowlist\r\n# ------------------------------------------------------------\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": false,\r\n\t\"reason_code\": \"namespace_not_globally_allowed\",\r\n\t\"reason\":
+    \"Namespace is outside restart policy.\",\r\n\t\"policy_id\": \"deployment-restart-v1\",\r\n\t\"obligations\":
+    [],\r\n\t\"trace\": [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.action
+    == \"deployment.restart\"\r\n\tsubject_enabled\r\n\t\"deployment:restart\" in
+    input.subject.permissions\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"writes_enabled\",\r\n\t\tfalse,\r\n\t)
+    == true\r\n\r\n\tnamespace := object.get(\r\n\t\tinput.resource.attributes,\r\n\t\t\"namespace\",\r\n\t\t\"\",\r\n\t)\r\n\r\n\tallowed_namespaces
+    := object.get(\r\n\t\tcontext_attributes,\r\n\t\t\"allowed_namespaces\",\r\n\t\t[],\r\n\t)\r\n\r\n\tnot
+    namespace in allowed_namespaces\r\n}\r\n\r\n# ------------------------------------------------------------\r\n#
+    Global deployment allowlist\r\n# ------------------------------------------------------------\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": false,\r\n\t\"reason_code\": \"deployment_not_globally_allowed\",\r\n\t\"reason\":
+    \"Deployment is outside restart policy.\",\r\n\t\"policy_id\": \"deployment-restart-v1\",\r\n\t\"obligations\":
+    [],\r\n\t\"trace\": [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.action
+    == \"deployment.restart\"\r\n\tsubject_enabled\r\n\t\"deployment:restart\" in
+    input.subject.permissions\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"writes_enabled\",\r\n\t\tfalse,\r\n\t)
+    == true\r\n\r\n\tnamespace := object.get(\r\n\t\tinput.resource.attributes,\r\n\t\t\"namespace\",\r\n\t\t\"\",\r\n\t)\r\n\r\n\tallowed_namespaces
+    := object.get(\r\n\t\tcontext_attributes,\r\n\t\t\"allowed_namespaces\",\r\n\t\t[],\r\n\t)\r\n\r\n\tnamespace
+    in allowed_namespaces\r\n\r\n\tdeployment_name := object.get(\r\n\t\tinput.resource.attributes,\r\n\t\t\"resource_name\",\r\n\t\t\"\",\r\n\t)\r\n\r\n\tallowed_deployments
+    := object.get(\r\n\t\tcontext_attributes,\r\n\t\t\"allowed_deployments\",\r\n\t\t[],\r\n\t)\r\n\r\n\tnot
+    deployment_name in allowed_deployments\r\n}\r\n\r\n# ------------------------------------------------------------\r\n#
+    Per-user namespace/resource grant\r\n# ------------------------------------------------------------\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": false,\r\n\t\"reason_code\": \"namespace_access_denied\",\r\n\t\"reason\":
+    \"Subject is not authorized for this namespace.\",\r\n\t\"policy_id\": \"deployment-restart-v1\",\r\n\t\"obligations\":
+    [],\r\n\t\"trace\": [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.action
+    == \"deployment.restart\"\r\n\tsubject_enabled\r\n\t\"deployment:restart\" in
+    input.subject.permissions\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"writes_enabled\",\r\n\t\tfalse,\r\n\t)
+    == true\r\n\r\n\tnamespace := object.get(\r\n\t\tinput.resource.attributes,\r\n\t\t\"namespace\",\r\n\t\t\"\",\r\n\t)\r\n\r\n\tallowed_namespaces
+    := object.get(\r\n\t\tcontext_attributes,\r\n\t\t\"allowed_namespaces\",\r\n\t\t[],\r\n\t)\r\n\r\n\tnamespace
+    in allowed_namespaces\r\n\r\n\tdeployment_name := object.get(\r\n\t\tinput.resource.attributes,\r\n\t\t\"resource_name\",\r\n\t\t\"\",\r\n\t)\r\n\r\n\tallowed_deployments
+    := object.get(\r\n\t\tcontext_attributes,\r\n\t\t\"allowed_deployments\",\r\n\t\t[],\r\n\t)\r\n\r\n\tdeployment_name
+    in allowed_deployments\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"has_namespace_grant\",\r\n\t\tfalse,\r\n\t)
+    != true\r\n}\r\n\r\n# ------------------------------------------------------------\r\n#
+    Execution requires approved action\r\n# ------------------------------------------------------------\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": false,\r\n\t\"reason_code\": \"approval_required\",\r\n\t\"reason\":
+    \"Approved action is required before execution.\",\r\n\t\"policy_id\": \"deployment-restart-v1\",\r\n\t\"obligations\":
+    [],\r\n\t\"trace\": [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.action
+    == \"deployment.restart\"\r\n\tsubject_enabled\r\n\t\"deployment:restart\" in
+    input.subject.permissions\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"writes_enabled\",\r\n\t\tfalse,\r\n\t)
+    == true\r\n\r\n\tnamespace := object.get(\r\n\t\tinput.resource.attributes,\r\n\t\t\"namespace\",\r\n\t\t\"\",\r\n\t)\r\n\r\n\tallowed_namespaces
+    := object.get(\r\n\t\tcontext_attributes,\r\n\t\t\"allowed_namespaces\",\r\n\t\t[],\r\n\t)\r\n\r\n\tnamespace
+    in allowed_namespaces\r\n\r\n\tdeployment_name := object.get(\r\n\t\tinput.resource.attributes,\r\n\t\t\"resource_name\",\r\n\t\t\"\",\r\n\t)\r\n\r\n\tallowed_deployments
+    := object.get(\r\n\t\tcontext_attributes,\r\n\t\t\"allowed_deployments\",\r\n\t\t[],\r\n\t)\r\n\r\n\tdeployment_name
+    in allowed_deployments\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"has_namespace_grant\",\r\n\t\tfalse,\r\n\t)
+    == true\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"phase\",\r\n\t\t\"\",\r\n\t)
+    == \"execution\"\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"approval_state\",\r\n\t\t\"\",\r\n\t)
+    != \"approved\"\r\n}\r\n\r\n# ------------------------------------------------------------\r\n#
+    Proposal is allowed after all authorization checks\r\n# ------------------------------------------------------------\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": true,\r\n\t\"reason_code\": \"allowed\",\r\n\t\"reason\":
+    \"Deployment restart policy allowed.\",\r\n\t\"policy_id\": \"deployment-restart-v1\",\r\n\t\"obligations\":
+    [\r\n\t\t\"explicit_approval\",\r\n\t\t\"audit_execution\",\r\n\t\t\"verify_rollout\",\r\n\t],\r\n\t\"trace\":
+    [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.action == \"deployment.restart\"\r\n\tsubject_enabled\r\n\t\"deployment:restart\"
+    in input.subject.permissions\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"writes_enabled\",\r\n\t\tfalse,\r\n\t)
+    == true\r\n\r\n\tnamespace := object.get(\r\n\t\tinput.resource.attributes,\r\n\t\t\"namespace\",\r\n\t\t\"\",\r\n\t)\r\n\r\n\tallowed_namespaces
+    := object.get(\r\n\t\tcontext_attributes,\r\n\t\t\"allowed_namespaces\",\r\n\t\t[],\r\n\t)\r\n\r\n\tnamespace
+    in allowed_namespaces\r\n\r\n\tdeployment_name := object.get(\r\n\t\tinput.resource.attributes,\r\n\t\t\"resource_name\",\r\n\t\t\"\",\r\n\t)\r\n\r\n\tallowed_deployments
+    := object.get(\r\n\t\tcontext_attributes,\r\n\t\t\"allowed_deployments\",\r\n\t\t[],\r\n\t)\r\n\r\n\tdeployment_name
+    in allowed_deployments\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"has_namespace_grant\",\r\n\t\tfalse,\r\n\t)
+    == true\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"phase\",\r\n\t\t\"\",\r\n\t)
+    == \"proposal\"\r\n}\r\n\r\n# ------------------------------------------------------------\r\n#
+    Execution allowed after explicit approval\r\n# ------------------------------------------------------------\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": true,\r\n\t\"reason_code\": \"allowed\",\r\n\t\"reason\":
+    \"Deployment restart policy allowed.\",\r\n\t\"policy_id\": \"deployment-restart-v1\",\r\n\t\"obligations\":
+    [\r\n\t\t\"explicit_approval\",\r\n\t\t\"audit_execution\",\r\n\t\t\"verify_rollout\",\r\n\t],\r\n\t\"trace\":
+    [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.action == \"deployment.restart\"\r\n\tsubject_enabled\r\n\t\"deployment:restart\"
+    in input.subject.permissions\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"writes_enabled\",\r\n\t\tfalse,\r\n\t)
+    == true\r\n\r\n\tnamespace := object.get(\r\n\t\tinput.resource.attributes,\r\n\t\t\"namespace\",\r\n\t\t\"\",\r\n\t)\r\n\r\n\tallowed_namespaces
+    := object.get(\r\n\t\tcontext_attributes,\r\n\t\t\"allowed_namespaces\",\r\n\t\t[],\r\n\t)\r\n\r\n\tnamespace
+    in allowed_namespaces\r\n\r\n\tdeployment_name := object.get(\r\n\t\tinput.resource.attributes,\r\n\t\t\"resource_name\",\r\n\t\t\"\",\r\n\t)\r\n\r\n\tallowed_deployments
+    := object.get(\r\n\t\tcontext_attributes,\r\n\t\t\"allowed_deployments\",\r\n\t\t[],\r\n\t)\r\n\r\n\tdeployment_name
+    in allowed_deployments\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"has_namespace_grant\",\r\n\t\tfalse,\r\n\t)
+    == true\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"phase\",\r\n\t\t\"\",\r\n\t)
+    == \"execution\"\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"approval_state\",\r\n\t\t\"\",\r\n\t)
+    == \"approved\"\r\n}\r\n\r\n# ------------------------------------------------------------\r\n#
+    Reconciliation\r\n# ------------------------------------------------------------\r\n\r\nraw_decision
+    := {\r\n\t\"allowed\": true,\r\n\t\"reason_code\": \"allowed\",\r\n\t\"reason\":
+    \"Deployment restart reconciliation allowed.\",\r\n\t\"policy_id\": \"deployment-restart-v1\",\r\n\t\"obligations\":
+    [\r\n\t\t\"audit_execution\",\r\n\t\t\"verify_rollout\",\r\n\t],\r\n\t\"trace\":
+    [],\r\n} if {\r\n\tsupported_policy_input_version\r\n\tinput.action == \"deployment.restart\"\r\n\tsubject_enabled\r\n\t\"deployment:restart\"
+    in input.subject.permissions\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"writes_enabled\",\r\n\t\tfalse,\r\n\t)
+    == true\r\n\r\n\tnamespace := object.get(\r\n\t\tinput.resource.attributes,\r\n\t\t\"namespace\",\r\n\t\t\"\",\r\n\t)\r\n\r\n\tallowed_namespaces
+    := object.get(\r\n\t\tcontext_attributes,\r\n\t\t\"allowed_namespaces\",\r\n\t\t[],\r\n\t)\r\n\r\n\tnamespace
+    in allowed_namespaces\r\n\r\n\tdeployment_name := object.get(\r\n\t\tinput.resource.attributes,\r\n\t\t\"resource_name\",\r\n\t\t\"\",\r\n\t)\r\n\r\n\tallowed_deployments
+    := object.get(\r\n\t\tcontext_attributes,\r\n\t\t\"allowed_deployments\",\r\n\t\t[],\r\n\t)\r\n\r\n\tdeployment_name
+    in allowed_deployments\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"has_namespace_grant\",\r\n\t\tfalse,\r\n\t)
+    == true\r\n\r\n\tobject.get(\r\n\t\tcontext_attributes,\r\n\t\t\"phase\",\r\n\t\t\"\",\r\n\t)
+    == \"reconciliation\"\r\n}\r\n"
+  data.json: "{\r\n  \"policy_metadata\": {\r\n    \"bundle_name\": \"ai-it-support-authz\",\r\n
+    \   \"version\": \"local\",\r\n    \"revision\": \"6548a3e4d21718569fce413aeba9a48fddd12cd4\"\r\n
+    \ }\r\n}\r\n"
+kind: ConfigMap
+metadata:
+  name: opa-policy
+  namespace: ai-support

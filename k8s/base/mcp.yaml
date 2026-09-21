@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-support-mcp
+  namespace: ai-support
+  labels:
+    app: ai-support-mcp
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: ai-support-mcp
+
+  template:
+    metadata:
+      labels:
+        app: ai-support-mcp
+
+    spec:
+      serviceAccountName: ai-support-mcp-sa
+      containers:
+        - name: mcp
+
+          image: ai-it-support-assistant:v0.4
+          imagePullPolicy: IfNotPresent
+
+          command:
+            - python
+            - -m
+            - ai_it_support_assistant.mcp_server.main
+
+          envFrom:
+            - configMapRef:
+                name: ai-support-config
+
+            - secretRef:
+                name: ai-support-secrets
+
+          env:
+            - name: MCP_HOST
+              value: "0.0.0.0"
+
+            - name: MCP_PORT
+              value: "8001"
+
+            - name: MCP_ISSUER_URL
+              value: "http://ai-support-api:8000"
+
+            - name: MCP_RESOURCE_SERVER_URL
+              value: "http://ai-support-mcp:8001/mcp"
+
+          ports:
+            - name: http
+              containerPort: 8001
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-support-mcp
+  namespace: ai-support
+
+spec:
+  selector:
+    app: ai-support-mcp
+
+  ports:
+    - name: http
+      port: 8001
+      targetPort: http
+
+  type: ClusterIP

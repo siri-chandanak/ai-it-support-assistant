@@ -35,3 +35,6 @@ dist/
 # Local OPA signing material
 opa-dev-private.pem
 opa-dev-public.pem
+
+k8s/base/secret.yaml
+k8s/base/secrets.yaml

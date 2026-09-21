@@ -1,0 +1,100 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Docker image tag to deploy, e.g. sha-6548a3e"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set production image
+        working-directory: k8s/overlays/prod
+        run: |
+          kustomize edit set image \
+            ai-it-support-assistant=siri019/ai-it-support-assistant:${{ inputs.image_tag }}
+
+      - name: Render production manifests
+        run: |
+          kubectl kustomize k8s/overlays/prod > /tmp/prod-rendered.yaml
+
+      - name: Validate production manifests
+        run: |
+          kubectl apply \
+            --dry-run=client \
+            -f /tmp/prod-rendered.yaml
+
+      - name: Render migration job
+        run: |
+          sed \
+            "s|ai-it-support-assistant:latest|siri019/ai-it-support-assistant:${{ inputs.image_tag }}|" \
+            k8s/overlays/prod/migration-job.yaml \
+            > /tmp/migration-job.yaml
+
+      - name: Validate migration job
+        run: |
+          kubectl create \
+            --dry-run=client \
+            -f /tmp/migration-job.yaml \
+            -o yaml > /dev/null
+
+      # Real cluster authentication goes here later.
+      # Example:
+      # - name: Configure kubeconfig
+      #   run: ...
+      #
+      # - name: Apply production manifests
+      #   run: kubectl apply -f /tmp/prod-rendered.yaml
+      #
+      # - name: Run database migration
+      #   run: |
+      #     MIGRATION_JOB=$(
+      #       kubectl create \
+      #         -f /tmp/migration-job.yaml \
+      #         -o jsonpath='{.metadata.name}'
+      #     )
+      #
+      #     kubectl wait \
+      #       --for=condition=complete \
+      #       job/$MIGRATION_JOB \
+      #       -n ai-support \
+      #       --timeout=300s
+      #
+      # - name: Verify API rollout
+      #   run: |
+      #     kubectl rollout status \
+      #       deployment/ai-support-api \
+      #       -n ai-support \
+      #       --timeout=300s
+      #
+      # - name: Verify worker rollout
+      #   run: |
+      #     kubectl rollout status \
+      #       deployment/ai-support-worker \
+      #       -n ai-support \
+      #       --timeout=300s
+      #
+      # - name: Verify MCP rollout
+      #   run: |
+      #     kubectl rollout status \
+      #       deployment/ai-support-mcp \
+      #       -n ai-support \
+      #       --timeout=300s

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-support-config
+  namespace: ai-support
+
+data:
+  MCP_ENABLED: "true"
+  POLICY_PDP_MODE: "opa"
+  OPA_URL: "http://opa:8181"
+
+  OTEL_ENABLED: "true"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+  OTEL_ENVIRONMENT: "local"
