@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opa
+  namespace: ai-support
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: opa
+
+  template:
+    metadata:
+      labels:
+        app: opa
+
+    spec:
+      containers:
+        - name: opa
+          image: openpolicyagent/opa:latest
+
+          args:
+            - run
+            - --server
+            - --addr=0.0.0.0:8181
+            - /policy/authorization.rego
+            - /policy/data.json
+
+          ports:
+            - name: http
+              containerPort: 8181
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+
+          volumeMounts:
+            - name: policy
+              mountPath: /policy
+              readOnly: true
+
+      volumes:
+        - name: policy
+          configMap:
+            name: opa-policy
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa
+  namespace: ai-support
+
+spec:
+  selector:
+    app: opa
+
+  ports:
+    - name: http
+      port: 8181
+      targetPort: http

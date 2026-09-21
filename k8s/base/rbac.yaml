@@ -1,0 +1,120 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ai-support-api-sa
+  namespace: ai-support
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ai-support-worker-sa
+  namespace: ai-support
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ai-support-mcp-sa
+  namespace: ai-support
+
+---
+# API read-only role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ai-support-api-read
+  namespace: ai-support
+
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - services
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ai-support-api-read
+  namespace: ai-support
+
+subjects:
+  - kind: ServiceAccount
+    name: ai-support-api-sa
+    namespace: ai-support
+
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ai-support-api-read
+
+---
+# Worker permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ai-support-worker-actions
+  namespace: ai-support
+
+rules:
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+
+  - apiGroups:
+      - apps
+    resources:
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ai-support-worker-actions
+  namespace: ai-support
+
+subjects:
+  - kind: ServiceAccount
+    name: ai-support-worker-sa
+    namespace: ai-support
+
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ai-support-worker-actions

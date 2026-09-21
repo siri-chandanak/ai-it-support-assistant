@@ -1,0 +1,45 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: ai-support-db-migration-
+  namespace: ai-support
+  labels:
+    app: ai-support-db-migration
+
+spec:
+  backoffLimit: 3
+
+  template:
+    metadata:
+      labels:
+        app: ai-support-db-migration
+
+    spec:
+      restartPolicy: Never
+
+      containers:
+        - name: migration
+          image: ai-it-support-assistant:latest
+          imagePullPolicy: IfNotPresent
+
+          command:
+            - alembic
+
+          args:
+            - upgrade
+            - head
+
+          envFrom:
+            - configMapRef:
+                name: ai-support-config
+
+            - secretRef:
+                name: ai-support-secrets
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

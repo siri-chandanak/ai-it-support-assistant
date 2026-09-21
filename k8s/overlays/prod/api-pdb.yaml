@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-support-api
+  namespace: ai-support
+
+spec:
+  minAvailable: 1
+
+  selector:
+    matchLabels:
+      app: ai-support-api

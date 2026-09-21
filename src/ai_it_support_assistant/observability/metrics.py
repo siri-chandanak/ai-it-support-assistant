@@ -254,7 +254,7 @@ WORKER_ACTIONS_FAILED = Counter(
     "Total number of failed worker actions",
     [
         "action_type",
-        "reason",
+        "failure_reason",
     ],
 )
 

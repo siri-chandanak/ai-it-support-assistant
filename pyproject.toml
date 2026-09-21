@@ -21,7 +21,7 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy>=0.65b0",
     "opentelemetry-sdk>=1.44.0",
     "prometheus-client>=0.26.0",
-    "psycopg>=3.3.5",
+    "psycopg[binary]>=3.3.5",
     "pwdlib[argon2]>=0.3.1",
     "pydantic-settings>=2.15.0",
     "pyjwt>=2.13.0",
@@ -30,6 +30,7 @@ dependencies = [
     "sentence-transformers>=6.0.1",
     "sqlalchemy>=2.0.52",
     "tenacity>=9.1.4",
+    "torch",
     "uvicorn[standard]>=0.52.4",
 ]
 
@@ -55,6 +56,9 @@ testpaths = ["tests"]
 markers = [
     "integration: tests requiring external infrastructure",
 ]
+filterwarnings = [
+    "ignore:The anyio\\.abc\\.BlockingPortal alias is deprecated:DeprecationWarning:starlette\\.testclient",
+]
 
 [tool.ruff]
 target-version = "py312"
@@ -69,3 +73,11 @@ indent-style = "space"
 
 [tool.ruff.lint.per-file-ignores]
 "src/ai_it_support_assistant/api/routes/*.py" = ["B008"]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

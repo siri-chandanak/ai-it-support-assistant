@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - api-hpa.yaml
+  - api-pdb.yaml
+
+patches:
+  - path: api-patch.yaml
+  - path: worker-patch.yaml
+
+images:
+  - name: ai-it-support-assistant
+    newName: siri019/ai-it-support-assistant
+    newTag: sha-placeholder
