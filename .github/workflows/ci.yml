@@ -19,6 +19,7 @@ jobs:
       DATABASE_URL: postgresql+psycopg://ai_support:ai_support_test_password@localhost:5432/ai_support_test
       POLICY_PDP_MODE: local
       QDRANT_URL: http://localhost:6333
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       
     services:
       postgres:
