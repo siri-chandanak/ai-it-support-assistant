@@ -126,7 +126,7 @@ def test_answer_question_abstains_when_no_chunks_found() -> None:
 
     assert response.sources == []
     assert response.retrieved_chunks == []
-    # assert response.insufficient_context is True
+    assert response.insufficient_context is True
     assert "couldn't find sufficiently relevant information" in response.answer
 
 

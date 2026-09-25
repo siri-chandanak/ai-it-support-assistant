@@ -297,12 +297,9 @@ def reconcile_stale_incident_action(
 
         payload = parse_incident_payload(current_action.payload_json)
 
-        incident = create_incident(
+        execution_result = create_incident(
             session=session,
-            title=payload.title,
-            description=payload.description,
-            severity=payload.severity,
-            service_name=payload.service_name,
+            request=payload,
             created_by=current_action.requested_by,
             idempotency_key=idempotency_key,
         )
@@ -311,7 +308,7 @@ def reconcile_stale_incident_action(
             session=session,
             approval_id=current_action.approval_id,
             expected_version=current_action.version,
-            resource_id=incident.incident_id,
+            resource_id=execution_result.incident.incident_id,
             result_json=None,
         )
 
@@ -963,7 +960,7 @@ def reconcile_stale_actions(
         except Exception:
             WORKER_ACTIONS_FAILED.labels(
                 action_type=reclaimed_action.action,
-                reason="stale_reconciliation_failed",
+                failure_reason="stale_reconciliation_failed",
             ).inc()
 
             logger.exception(

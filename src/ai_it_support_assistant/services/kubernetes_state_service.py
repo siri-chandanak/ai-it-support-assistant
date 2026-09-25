@@ -10,8 +10,8 @@ from ai_it_support_assistant.schemas.kubernetes import (
     PodState,
 )
 from ai_it_support_assistant.services.kubernetes_client_service import (
+    KubernetesClientError,
     get_apps_v1_api,
-    get_core_v1_api,
 )
 
 tracer = get_tracer()
@@ -51,10 +51,13 @@ def get_deployment_state(
             operation="read_deployment",
         ).inc()
 
-        api = get_apps_v1_api(
-            config_mode=config_mode,
-            context=context,
-        )
+        try:
+            api = get_apps_v1_api(
+                config_mode=config_mode,
+                context=context,
+            )
+        except KubernetesClientError as exc:
+            raise KubernetesStateError("Kubernetes client is unavailable.") from exc
 
         try:
             deployment = api.read_namespaced_deployment(
@@ -196,16 +199,22 @@ def get_pod_state(
             "read",
         )
 
-        api = get_core_v1_api(
-            config_mode=config_mode,
-            context=context,
-        )
+        try:
+            api = get_apps_v1_api(
+                config_mode=config_mode,
+                context=context,
+            )
+        except KubernetesClientError as exc:
+            raise KubernetesStateError("Kubernetes client is unavailable.") from exc
 
         try:
             pod = api.read_namespaced_pod(
                 name=name,
                 namespace=namespace,
             )
+
+        except KubernetesClientError as exc:
+            raise KubernetesStateError("Kubernetes client is unavailable.") from exc
 
         except ApiException as exc:
             span.set_attribute(

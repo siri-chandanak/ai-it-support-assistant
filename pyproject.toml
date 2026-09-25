@@ -54,7 +54,10 @@ dev = [
 pythonpath = ["src"]
 testpaths = ["tests"]
 markers = [
-    "integration: tests requiring external infrastructure",
+    "e2e: end-to-end tests",
+    "integration: integration tests",
+    "chaos: controlled dependency failure tests",
+    "kubernetes_write: tests that perform safe Kubernetes writes",
 ]
 filterwarnings = [
     "ignore:The anyio\\.abc\\.BlockingPortal alias is deprecated:DeprecationWarning:starlette\\.testclient",

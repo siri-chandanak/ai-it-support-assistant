@@ -17,8 +17,21 @@ jobs:
     env:
       TEST_DATABASE_URL: postgresql+psycopg://ai_support:ai_support_test_password@localhost:5432/ai_support_test
       DATABASE_URL: postgresql+psycopg://ai_support:ai_support_test_password@localhost:5432/ai_support_test
+
       POLICY_PDP_MODE: local
       QDRANT_URL: http://localhost:6333
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      KUBERNETES_CONFIG_MODE: local
+      KUBERNETES_CONTEXT: kind-ai-support
+
+      KUBERNETES_WRITE_ENABLED: "true"
+      KUBERNETES_RESTART_ALLOWED_NAMESPACES: ai-support
+      KUBERNETES_RESTART_ALLOWED_DEPLOYMENTS: restart-test
+
+      E2E_KUBERNETES_WRITES_ENABLED: "true"
+      E2E_TEST_NAMESPACE: ai-support
+      E2E_TEST_DEPLOYMENT: restart-test
       
     services:
       postgres:
@@ -65,6 +78,26 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --dev
 
+      - name: Create disposable Kubernetes cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: ai-support
+
+      - name: Create Kubernetes E2E fixtures
+        run: |
+          kubectl create namespace ai-support
+
+          kubectl create deployment restart-test \
+            --image=nginx:alpine \
+            -n ai-support
+
+          kubectl rollout status deployment/restart-test \
+            -n ai-support \
+            --timeout=120s
+
+          kubectl get deployment restart-test \
+            -n ai-support
+
       - name: Install OPA
         uses: open-policy-agent/setup-opa@v2
         with:
@@ -81,6 +114,35 @@ jobs:
 
       - name: Run database migrations
         run: uv run alembic upgrade head
+
+      - name: Initialize Qdrant collection
+        run: |
+          uv run python - <<'PY'
+          from qdrant_client import QdrantClient
+
+          from ai_it_support_assistant.core.config import get_settings
+          from ai_it_support_assistant.services.vector_store_service import (
+              ensure_collection,
+          )
+
+          settings = get_settings()
+
+          client = QdrantClient(
+              url=settings.qdrant_url,
+              timeout=settings.qdrant_timeout_seconds,
+          )
+
+          ensure_collection(
+              client=client,
+              collection_name=settings.qdrant_collection_name,
+              vector_size=384,
+          )
+
+          print(
+              f"Qdrant collection ready: "
+              f"{settings.qdrant_collection_name}"
+          )
+          PY
 
       - name: Run tests
         run: uv run pytest

@@ -35,7 +35,7 @@ class AuditEventModel(Base):
     )
 
     resource_id: Mapped[str | None] = mapped_column(
-        String(32),
+        String(255),
         nullable=True,
     )
 
