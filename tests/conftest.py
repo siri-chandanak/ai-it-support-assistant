@@ -25,7 +25,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 load_dotenv(
     PROJECT_ROOT / ".env",
-    override=True,
+    override=False,
 )
 
 normal_database_url = os.getenv("DATABASE_URL")
@@ -34,14 +34,26 @@ test_database_url_value = os.getenv("TEST_DATABASE_URL")
 if not test_database_url_value:
     raise RuntimeError("TEST_DATABASE_URL is not set. Use a separate PostgreSQL test database.")
 
+is_github_actions = (
+    os.getenv("GITHUB_ACTIONS", "")
+    .strip()
+    .lower()
+    == "true"
+)
+
 allow_same_database_url = (
     os.getenv("ALLOW_TEST_DATABASE_URL_AS_DATABASE_URL", "").strip().lower() == "true"
 )
 
-if test_database_url_value == normal_database_url and not allow_same_database_url:
+if (
+    test_database_url_value == normal_database_url
+    and not is_github_actions
+    and not allow_same_database_url
+):
     raise RuntimeError(
         "TEST_DATABASE_URL must not equal DATABASE_URL "
-        "unless ALLOW_TEST_DATABASE_URL_AS_DATABASE_URL=true."
+        "outside GitHub Actions unless "
+        "ALLOW_TEST_DATABASE_URL_AS_DATABASE_URL=true."
     )
 
 os.environ["DATABASE_URL"] = test_database_url_value
