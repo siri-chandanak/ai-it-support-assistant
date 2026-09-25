@@ -34,14 +34,18 @@ test_database_url_value = os.getenv("TEST_DATABASE_URL")
 if not test_database_url_value:
     raise RuntimeError("TEST_DATABASE_URL is not set. Use a separate PostgreSQL test database.")
 
-if test_database_url_value == normal_database_url:
-    raise RuntimeError("TEST_DATABASE_URL must not equal DATABASE_URL.")
+allow_same_database_url = (
+    os.getenv("ALLOW_TEST_DATABASE_URL_AS_DATABASE_URL", "").strip().lower() == "true"
+)
 
-# Redirect all application DB access during pytest
-# to the isolated test database.
+if test_database_url_value == normal_database_url and not allow_same_database_url:
+    raise RuntimeError(
+        "TEST_DATABASE_URL must not equal DATABASE_URL "
+        "unless ALLOW_TEST_DATABASE_URL_AS_DATABASE_URL=true."
+    )
+
 os.environ["DATABASE_URL"] = test_database_url_value
 
-# Test-safe configuration.
 os.environ["OTEL_ENABLED"] = "false"
 os.environ["METRICS_ENABLED"] = "true"
 os.environ["POLICY_PDP_MODE"] = "local"
