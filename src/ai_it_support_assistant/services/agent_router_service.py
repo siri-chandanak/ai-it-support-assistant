@@ -16,6 +16,12 @@ class AgentRoutingError(Exception):
     pass
 
 
+class AgentInputValidationError(AgentRoutingError):
+    """Raised when an operational request is missing required input."""
+
+    pass
+
+
 def validate_agent_decision(
     decision: AgentRoutingOutput,
 ) -> None:
@@ -121,7 +127,7 @@ def validate_agent_decision(
             raise AgentRoutingError("restart_deployment requires deployment name.")
 
         if not decision.kubernetes_namespace:
-            raise AgentRoutingError("restart_deployment requires namespace.")
+            raise AgentInputValidationError("restart_deployment requires namespace.")
 
         if decision.service_name is not None:
             raise AgentRoutingError("restart_deployment cannot include service_name.")

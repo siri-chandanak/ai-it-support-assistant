@@ -16,6 +16,7 @@ from ai_it_support_assistant.schemas.agent import (
 )
 from ai_it_support_assistant.schemas.auth import User
 from ai_it_support_assistant.services.agent_router_service import (
+    AgentInputValidationError,
     AgentRoutingError,
 )
 from ai_it_support_assistant.services.agent_service import (
@@ -100,6 +101,12 @@ def ask_agent(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Authorization service is unavailable.",
+        ) from exc
+
+    except AgentInputValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=("An explicit namespace is required for Kubernetes restart requests."),
         ) from exc
 
     except AgentRoutingError as exc:

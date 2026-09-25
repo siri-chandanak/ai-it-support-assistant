@@ -106,6 +106,12 @@ class Settings(BaseSettings):
     metrics_enabled: bool = True
     worker_metrics_port: int = 9101
 
+    e2e_enabled: bool = False
+    e2e_kubernetes_writes_enabled: bool = False
+    e2e_expected_environment: str = "development"
+    e2e_test_namespace: str = ""
+    e2e_test_deployment: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

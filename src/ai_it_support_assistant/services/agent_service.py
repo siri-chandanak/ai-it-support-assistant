@@ -18,6 +18,7 @@ from ai_it_support_assistant.services.action_proposal_service import (
     prepare_restart_action,
 )
 from ai_it_support_assistant.services.agent_router_service import (
+    AgentInputValidationError,
     AgentRoutingError,
     route_agent_request,
 )
@@ -296,7 +297,7 @@ def handle_agent_request(
             raise AgentRoutingError("Deployment name is required.")
 
         if namespace is None:
-            raise AgentRoutingError("Namespace is required for restart_deployment.")
+            raise AgentInputValidationError("Namespace is required for restart_deployment.")
 
         logger.info(
             ("restart_proposal_started request_id=%s namespace=%s deployment=%s"),
