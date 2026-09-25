@@ -34,12 +34,7 @@ test_database_url_value = os.getenv("TEST_DATABASE_URL")
 if not test_database_url_value:
     raise RuntimeError("TEST_DATABASE_URL is not set. Use a separate PostgreSQL test database.")
 
-is_github_actions = (
-    os.getenv("GITHUB_ACTIONS", "")
-    .strip()
-    .lower()
-    == "true"
-)
+is_github_actions = os.getenv("GITHUB_ACTIONS", "").strip().lower() == "true"
 
 allow_same_database_url = (
     os.getenv("ALLOW_TEST_DATABASE_URL_AS_DATABASE_URL", "").strip().lower() == "true"
