@@ -82,6 +82,35 @@ jobs:
       - name: Run database migrations
         run: uv run alembic upgrade head
 
+      - name: Initialize Qdrant collection
+        run: |
+          uv run python - <<'PY'
+          from qdrant_client import QdrantClient
+
+          from ai_it_support_assistant.core.config import get_settings
+          from ai_it_support_assistant.services.vector_store_service import (
+              ensure_collection,
+          )
+
+          settings = get_settings()
+
+          client = QdrantClient(
+              url=settings.qdrant_url,
+              timeout=settings.qdrant_timeout_seconds,
+          )
+
+          ensure_collection(
+              client=client,
+              collection_name=settings.qdrant_collection_name,
+              vector_size=384,
+          )
+
+          print(
+              f"Qdrant collection ready: "
+              f"{settings.qdrant_collection_name}"
+          )
+          PY
+
       - name: Run tests
         run: uv run pytest
 
