@@ -117,7 +117,7 @@ class Settings(BaseSettings):
 
     performance_environment: str = "local"
 
-    rag_request_timeout_seconds: float = 5.0
+    rag_request_timeout_seconds: float = 45.0
 
     # qdrant_timeout_seconds: float = 0.5
     # qdrant_max_attempts: int = 2
