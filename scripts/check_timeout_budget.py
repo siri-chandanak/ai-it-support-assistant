@@ -11,7 +11,7 @@ def main() -> None:
     qdrant_attempts = settings.qdrant_max_attempts
 
     llm_timeout = settings.openai_timeout_seconds
-    
+
     llm_retries = settings.openai_max_retries
 
     overall_timeout = getattr(
