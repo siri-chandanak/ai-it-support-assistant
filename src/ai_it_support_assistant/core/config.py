@@ -112,6 +112,19 @@ class Settings(BaseSettings):
     e2e_test_namespace: str = ""
     e2e_test_deployment: str = ""
 
+    llm_input_cost_per_million_tokens: float = 0.0
+    llm_output_cost_per_million_tokens: float = 0.0
+
+    performance_environment: str = "local"
+
+    rag_request_timeout_seconds: float = 45.0
+
+    # qdrant_timeout_seconds: float = 0.5
+    # qdrant_max_attempts: int = 2
+
+    # llm_timeout_seconds: float = 4.0
+    # llm_max_retries: int = 1
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

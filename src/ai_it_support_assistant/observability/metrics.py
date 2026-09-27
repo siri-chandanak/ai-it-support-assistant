@@ -83,18 +83,6 @@ LLM_DURATION = Histogram(
     ["model"],
 )
 
-LLM_INPUT_TOKENS = Counter(
-    "ai_support_llm_input_tokens_total",
-    "Total number of LLM input tokens",
-    ["model"],
-)
-
-LLM_OUTPUT_TOKENS = Counter(
-    "ai_support_llm_output_tokens_total",
-    "Total number of LLM output tokens",
-    ["model"],
-)
-
 
 # ============================================================
 # AGENT ROUTING METRICS
@@ -338,32 +326,6 @@ DEPLOYMENT_ROLLOUT_FAILURES = Counter(
     ["reason"],
 )
 
-
-# ============================================================
-# CACHE METRICS
-# ============================================================
-
-EMBEDDING_CACHE_HITS = Counter(
-    "ai_support_embedding_cache_hits_total",
-    "Total number of embedding cache hits",
-)
-
-EMBEDDING_CACHE_MISSES = Counter(
-    "ai_support_embedding_cache_misses_total",
-    "Total number of embedding cache misses",
-)
-
-RETRIEVAL_CACHE_HITS = Counter(
-    "ai_support_retrieval_cache_hits_total",
-    "Total number of retrieval cache hits",
-)
-
-RETRIEVAL_CACHE_MISSES = Counter(
-    "ai_support_retrieval_cache_misses_total",
-    "Total number of retrieval cache misses",
-)
-
-
 # ---------------------------------------------------------
 # MCP
 # ---------------------------------------------------------
@@ -392,6 +354,70 @@ MCP_RESOURCE_READS = Counter(
     ["resource_type", "outcome"],
 )
 
+
+LLM_INPUT_TOKENS = Counter(
+    "ai_support_llm_input_tokens_total",
+    "Total LLM input tokens.",
+    ["model", "operation"],
+)
+
+LLM_OUTPUT_TOKENS = Counter(
+    "ai_support_llm_output_tokens_total",
+    "Total LLM output tokens.",
+    ["model", "operation"],
+)
+
+LLM_ESTIMATED_COST_TOTAL = Counter(
+    "ai_support_llm_estimated_cost",
+    "Estimated direct LLM cost.",
+    ["model", "operation"],
+)
+
+EMBEDDING_CACHE_HITS = Counter(
+    "ai_support_embedding_cache_hits",
+    "Embedding cache hits",
+)
+
+
+EMBEDDING_CACHE_MISSES = Counter(
+    "ai_support_embedding_cache_misses",
+    "Embedding cache misses",
+)
+
+
+RETRIEVAL_CACHE_HITS = Counter(
+    "ai_support_retrieval_cache_hits",
+    "Retrieval cache hits",
+)
+
+
+RETRIEVAL_CACHE_MISSES = Counter(
+    "ai_support_retrieval_cache_misses",
+    "Retrieval cache misses",
+)
+
+embedding_cache_hits_total = Counter(
+    "embedding_cache_hits_total",
+    "Total embedding cache hits.",
+)
+
+
+embedding_cache_misses_total = Counter(
+    "embedding_cache_misses_total",
+    "Total embedding cache misses.",
+)
+
+
+retrieval_cache_hits_total = Counter(
+    "retrieval_cache_hits_total",
+    "Total retrieval cache hits.",
+)
+
+
+retrieval_cache_misses_total = Counter(
+    "retrieval_cache_misses_total",
+    "Total retrieval cache misses.",
+)
 
 # ---------------------------------------------------------
 # Helper functions

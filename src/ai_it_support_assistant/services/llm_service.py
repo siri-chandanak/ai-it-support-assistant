@@ -12,11 +12,13 @@ from openai import (
 )
 from opentelemetry.trace import Status, StatusCode
 
+from ai_it_support_assistant.core.config import get_settings
 from ai_it_support_assistant.core.request_context import (
     get_request_id,
 )
 from ai_it_support_assistant.observability.metrics import (
     LLM_DURATION,
+    LLM_ESTIMATED_COST_TOTAL,
     LLM_FAILURES,
     LLM_INPUT_TOKENS,
     LLM_OUTPUT_TOKENS,
@@ -26,6 +28,9 @@ from ai_it_support_assistant.observability.tracing import (
     get_tracer,
 )
 from ai_it_support_assistant.schemas.rag import GroundedLLMOutput
+from ai_it_support_assistant.services.cost_estimation_service import (
+    estimate_llm_cost,
+)
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer()
@@ -353,6 +358,7 @@ Company support context:
 
                 LLM_INPUT_TOKENS.labels(
                     model=model_name,
+                    operation="rag_answer",
                 ).inc(input_tokens)
 
             if output_tokens is not None:
@@ -363,7 +369,28 @@ Company support context:
 
                 LLM_OUTPUT_TOKENS.labels(
                     model=model_name,
+                    operation="rag_answer",
                 ).inc(output_tokens)
+
+            if input_tokens is not None and output_tokens is not None:
+                settings = get_settings()
+
+                estimated_cost = estimate_llm_cost(
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    input_rate=(settings.llm_input_cost_per_million_tokens),
+                    output_rate=(settings.llm_output_cost_per_million_tokens),
+                )
+
+                LLM_ESTIMATED_COST_TOTAL.labels(
+                    model=model_name,
+                    operation="rag_answer",
+                ).inc(estimated_cost)
+
+                span.set_attribute(
+                    "llm.estimated_cost",
+                    estimated_cost,
+                )
 
         # ----------------------------------------------------
         # Empty response handling

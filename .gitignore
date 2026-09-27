@@ -38,3 +38,6 @@ opa-dev-public.pem
 
 k8s/base/secret.yaml
 k8s/base/secrets.yaml
+
+# Performance test outputs
+performance/results/

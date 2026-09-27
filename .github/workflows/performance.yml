@@ -1,0 +1,121 @@
+name: Performance
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  performance-smoke:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Run embedding benchmark
+        run: |
+          uv run python scripts/benchmark_embeddings.py
+
+      - name: Check timeout budget
+        run: |
+          uv run python scripts/check_timeout_budget.py
+
+      - name: Check retry budget
+        run: |
+          uv run python scripts/check_retry_budget.py
+
+  nightly-performance:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Create results directory
+        run: mkdir -p performance/results
+
+      - name: Run microbenchmarks
+        run: |
+          uv run python scripts/benchmark_embeddings.py
+          uv run python scripts/check_timeout_budget.py
+          uv run python scripts/check_retry_budget.py
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results
+          path: performance/results/
+
+  nightly-staging-load:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    env:
+      PERF_TEST_TOKEN: ${{ secrets.PERF_TEST_TOKEN }}
+      PERF_HOST: ${{ secrets.PERF_HOST }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Create results directory
+        run: mkdir -p performance/results
+
+      - name: Run staging baseline
+        run: |
+          uv run locust \
+            -f performance/locustfile.py \
+            --headless \
+            -u 25 \
+            -r 5 \
+            -t 5m \
+            --csv performance/results/baseline \
+            --host "$PERF_HOST"
+
+      - name: Build performance summary
+        run: |
+          uv run python scripts/run_performance_baseline.py
+
+      - name: Run performance readiness
+        run: |
+          uv run python scripts/run_performance_readiness.py
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-performance-results
+          path: performance/results/
