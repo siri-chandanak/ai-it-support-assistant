@@ -45,6 +45,8 @@ build-backend = "uv_build"
 dev = [
     "httpx>=0.28.1",
     "httpx2>=2.12.0",
+    "locust>=2.46.6",
+    "psutil>=7.2.2",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.16.5",
@@ -58,6 +60,8 @@ markers = [
     "integration: integration tests",
     "chaos: controlled dependency failure tests",
     "kubernetes_write: tests that perform safe Kubernetes writes",
+    "performance: performance-focused tests",
+    "slow: slow-running tests",
 ]
 filterwarnings = [
     "ignore:The anyio\\.abc\\.BlockingPortal alias is deprecated:DeprecationWarning:starlette\\.testclient",

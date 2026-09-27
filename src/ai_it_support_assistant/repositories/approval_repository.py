@@ -213,6 +213,30 @@ def transition_action_state(
 
     Both the expected state and expected version must still match.
     """
+
+    now = datetime.now(UTC)
+
+    update_values = {
+        "state": target_state,
+        "version": expected_version + 1,
+    }
+
+    #
+    # Record when an action enters the approved queue.
+    #
+    if target_state == "approved":
+        update_values["approved_at"] = now
+
+    #
+    # Record completion time for terminal states.
+    #
+    if target_state in {
+        "succeeded",
+        "failed",
+        "rejected",
+    }:
+        update_values["completed_at"] = now
+
     statement = (
         update(PendingActionModel)
         .where(
@@ -220,10 +244,7 @@ def transition_action_state(
             PendingActionModel.state == expected_state,
             PendingActionModel.version == expected_version,
         )
-        .values(
-            state=target_state,
-            version=expected_version + 1,
-        )
+        .values(**update_values)
     )
 
     result = session.execute(statement)

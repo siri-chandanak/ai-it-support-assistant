@@ -170,3 +170,16 @@ class PolicyEvaluationSummary(BaseModel):
     deny_accuracy: float
 
     results: list[PolicyEvaluationResult]
+
+
+class AutoscalingRecommendation(BaseModel):
+    api_scaling_signal: str
+    worker_scaling_signal: str
+
+    observed_api_cpu_percent: float
+    observed_rag_p95_ms: float
+
+    queue_depth: int
+    queue_delay_p95_ms: float
+
+    recommendation_notes: list[str]

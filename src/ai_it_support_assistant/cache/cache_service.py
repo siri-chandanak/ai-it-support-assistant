@@ -3,6 +3,12 @@ from threading import Lock
 
 from cachetools import TTLCache
 
+from ai_it_support_assistant.observability.metrics import (
+    embedding_cache_hits_total,
+    embedding_cache_misses_total,
+    retrieval_cache_hits_total,
+    retrieval_cache_misses_total,
+)
 from ai_it_support_assistant.schemas.retrieval import (
     RetrievedChunk,
 )
@@ -45,10 +51,11 @@ def configure_embedding_cache(
 ) -> None:
     global _embedding_cache
 
-    _embedding_cache = TTLCache(
-        maxsize=max_size,
-        ttl=ttl_seconds,
-    )
+    with _embedding_cache_lock:
+        _embedding_cache = TTLCache(
+            maxsize=max_size,
+            ttl=ttl_seconds,
+        )
 
 
 def configure_retrieval_cache(
@@ -58,10 +65,11 @@ def configure_retrieval_cache(
 ) -> None:
     global _retrieval_cache
 
-    _retrieval_cache = TTLCache(
-        maxsize=max_size,
-        ttl=ttl_seconds,
-    )
+    with _retrieval_cache_lock:
+        _retrieval_cache = TTLCache(
+            maxsize=max_size,
+            ttl=ttl_seconds,
+        )
 
 
 def get_cached_embedding(
@@ -74,7 +82,10 @@ def get_cached_embedding(
         value = _embedding_cache.get(key)
 
     if value is None:
+        embedding_cache_misses_total.inc()
         return None
+
+    embedding_cache_hits_total.inc()
 
     return list(value)
 
@@ -100,7 +111,9 @@ def build_retrieval_cache_key(
     user_roles: list[str],
 ) -> str:
     normalized_query = normalize_query(query)
+
     query_hash = hash_text(normalized_query)
+
     normalized_roles = ",".join(sorted(set(user_roles)))
 
     return (
@@ -123,7 +136,10 @@ def get_cached_retrieval(
         cached = _retrieval_cache.get(key)
 
     if cached is None:
+        retrieval_cache_misses_total.inc()
         return None
+
+    retrieval_cache_hits_total.inc()
 
     return [RetrievedChunk.model_validate(item) for item in cached]
 
@@ -142,9 +158,22 @@ def set_cached_retrieval(
         _retrieval_cache[key] = serialized
 
 
+def clear_embedding_cache() -> None:
+    if _embedding_cache is None:
+        return
+
+    with _embedding_cache_lock:
+        _embedding_cache.clear()
+
+
 def clear_retrieval_cache() -> None:
     if _retrieval_cache is None:
         return
 
     with _retrieval_cache_lock:
         _retrieval_cache.clear()
+
+
+def clear_all_caches() -> None:
+    clear_embedding_cache()
+    clear_retrieval_cache()
