@@ -10,25 +10,9 @@ def main() -> None:
 
     qdrant_attempts = settings.qdrant_max_attempts
 
-    llm_timeout = getattr(
-        settings,
-        "llm_timeout_seconds",
-        getattr(
-            settings,
-            "openai_timeout_seconds",
-            0.0,
-        ),
-    )
-
-    llm_retries = getattr(
-        settings,
-        "llm_max_retries",
-        getattr(
-            settings,
-            "openai_max_retries",
-            0,
-        ),
-    )
+    llm_timeout = settings.openai_timeout_seconds
+    
+    llm_retries = settings.openai_max_retries
 
     overall_timeout = getattr(
         settings,

@@ -122,8 +122,8 @@ class Settings(BaseSettings):
     # qdrant_timeout_seconds: float = 0.5
     # qdrant_max_attempts: int = 2
 
-    llm_timeout_seconds: float = 4.0
-    llm_max_retries: int = 1
+    # llm_timeout_seconds: float = 4.0
+    # llm_max_retries: int = 1
 
     model_config = SettingsConfigDict(
         env_file=".env",
