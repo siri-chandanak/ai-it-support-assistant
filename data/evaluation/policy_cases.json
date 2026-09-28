@@ -130,11 +130,11 @@
     "action": "deployment.restart",
     "resource": {
       "resource_type": "kubernetes",
-      "resource_id": "team-a-dev/payment-api",
+      "resource_id": "team-a-dev/ai-support-api",
       "attributes": {
         "namespace": "team-a-dev",
         "resource_kind": "deployment",
-        "resource_name": "payment-api"
+        "resource_name": "ai-support-api"
       }
     },
     "context": {

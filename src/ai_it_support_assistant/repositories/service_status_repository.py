@@ -1,8 +1,8 @@
 from ai_it_support_assistant.schemas.tools import ServiceStatus
 
 _service_statuses: dict[str, ServiceStatus] = {
-    "payment-api": ServiceStatus(
-        service_name="payment-api",
+    "ai-support-api": ServiceStatus(
+        service_name="ai-support-api",
         status="healthy",
         message="All instances are responding.",
     ),

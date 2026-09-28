@@ -40,7 +40,7 @@ def settings() -> Settings:
         action_worker_stale_after_seconds=300,
         kubernetes_write_enabled=True,
         kubernetes_restart_allowed_namespaces="dev",
-        kubernetes_restart_allowed_deployments="payment-api",
+        kubernetes_restart_allowed_deployments="ai-support-api",
         kubernetes_config_mode="kubeconfig",
         kubernetes_context="test-context",
     )
@@ -742,7 +742,7 @@ def test_restart_recovery_does_not_repatch(
         requested_by="admin",
         requested_roles_json='["admin"]',
         payload_json=(
-            '{"name":"payment-api",'
+            '{"name":"ai-support-api",'
             '"namespace":"dev",'
             '"evidence_desired_replicas":3,'
             '"evidence_ready_replicas":1,'
@@ -751,7 +751,7 @@ def test_restart_recovery_does_not_repatch(
         ),
         state="executing",
         version=3,
-        resource_id="dev/payment-api",
+        resource_id="dev/ai-support-api",
         execution_token="T1",
     )
 
@@ -819,7 +819,7 @@ def test_restart_recovery_does_not_repatch(
 
     assert policy_kwargs["namespace"] == "dev"
 
-    assert policy_kwargs["deployment_name"] == "payment-api"
+    assert policy_kwargs["deployment_name"] == "ai-support-api"
 
     assert policy_kwargs["writes_enabled"] == settings.kubernetes_write_enabled
 
@@ -830,7 +830,7 @@ def test_restart_recovery_does_not_repatch(
     assert policy_kwargs["subject"].username == "admin"
 
     mock_get_token.assert_called_once_with(
-        name="payment-api",
+        name="ai-support-api",
         namespace="dev",
         config_mode=(settings.kubernetes_config_mode),
         context=settings.kubernetes_context,
@@ -864,7 +864,7 @@ def test_restart_recovery_reuses_same_token(
         requested_by="admin",
         requested_roles_json='["admin"]',
         payload_json=(
-            '{"name":"payment-api",'
+            '{"name":"ai-support-api",'
             '"namespace":"dev",'
             '"evidence_desired_replicas":3,'
             '"evidence_ready_replicas":1,'
@@ -873,7 +873,7 @@ def test_restart_recovery_reuses_same_token(
         ),
         state="executing",
         version=3,
-        resource_id="dev/payment-api",
+        resource_id="dev/ai-support-api",
         execution_token="T1",
     )
 
@@ -937,7 +937,7 @@ def test_restart_recovery_reuses_same_token(
 
     assert policy_kwargs["namespace"] == "dev"
 
-    assert policy_kwargs["deployment_name"] == "payment-api"
+    assert policy_kwargs["deployment_name"] == "ai-support-api"
 
     #
     # Kubernetes does not have T1,
@@ -948,7 +948,7 @@ def test_restart_recovery_reuses_same_token(
 
     restart_kwargs = mock_restart.call_args.kwargs
 
-    assert restart_kwargs["name"] == "payment-api"
+    assert restart_kwargs["name"] == "ai-support-api"
 
     assert restart_kwargs["namespace"] == "dev"
 

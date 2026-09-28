@@ -368,7 +368,7 @@ def mark_action_succeeded(
 
     resource_id is generic:
       create_incident     -> INC-123
-      restart_deployment  -> dev/payment-api
+      restart_deployment  -> dev/ai-support-api
     """
     now = datetime.now(UTC)
 

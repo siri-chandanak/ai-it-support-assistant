@@ -86,7 +86,7 @@ def restart_settings() -> Settings:
     return Settings(
         kubernetes_write_enabled=True,
         kubernetes_restart_allowed_namespaces="dev",
-        kubernetes_restart_allowed_deployments="payment-api",
+        kubernetes_restart_allowed_deployments="ai-support-api",
         kubernetes_config_mode="kubeconfig",
         kubernetes_context="test-context",
     )
@@ -103,7 +103,7 @@ def approved_restart_action(
         requested_by=restart_admin_user.username,
         payload_json=json.dumps(
             {
-                "name": "payment-api",
+                "name": "ai-support-api",
                 "namespace": "dev",
                 "evidence_desired_replicas": 3,
                 "evidence_ready_replicas": 1,
@@ -683,7 +683,7 @@ def test_restart_execution_token_is_persisted_before_write(
     mock_restart_deployment.side_effect = assert_token_exists_before_patch
 
     mock_monitor_rollout.return_value = DeploymentRolloutResult(
-        deployment_name="payment-api",
+        deployment_name="ai-support-api",
         namespace="dev",
         outcome="healthy",
         desired_replicas=3,
@@ -731,7 +731,7 @@ def test_restart_action_succeeds_when_marker_is_verified(
     settings = Settings(
         kubernetes_write_enabled=True,
         kubernetes_restart_allowed_namespaces="dev",
-        kubernetes_restart_allowed_deployments=("payment-api"),
+        kubernetes_restart_allowed_deployments=("ai-support-api"),
         kubernetes_config_mode="kubeconfig",
         kubernetes_context="test-context",
     )
@@ -740,7 +740,7 @@ def test_restart_action_succeeds_when_marker_is_verified(
     mock_has_restart_token.return_value = True
 
     mock_monitor_rollout.return_value = DeploymentRolloutResult(
-        deployment_name="payment-api",
+        deployment_name="ai-support-api",
         namespace="dev",
         outcome="healthy",
         desired_replicas=3,
@@ -764,7 +764,7 @@ def test_restart_action_succeeds_when_marker_is_verified(
     )
 
     assert result.state == "succeeded"
-    assert result.resource_id == "dev/payment-api"
+    assert result.resource_id == "dev/ai-support-api"
     assert result.execution_token is not None
 
     saved = get_pending_action(
@@ -774,7 +774,7 @@ def test_restart_action_succeeds_when_marker_is_verified(
 
     assert saved is not None
     assert saved.state == "succeeded"
-    assert saved.resource_id == "dev/payment-api"
+    assert saved.resource_id == "dev/ai-support-api"
     assert saved.execution_token is not None
 
     mock_restart_deployment.assert_called_once()
@@ -805,7 +805,7 @@ def test_restart_succeeds_after_reconciliation(
     mock_has_restart_token.return_value = True
 
     mock_monitor_rollout.return_value = DeploymentRolloutResult(
-        deployment_name="payment-api",
+        deployment_name="ai-support-api",
         namespace="dev",
         outcome="healthy",
         desired_replicas=3,
@@ -923,7 +923,7 @@ def test_restart_policy_is_rechecked_before_execution(
 
     assert call_kwargs["namespace"] == "dev"
 
-    assert call_kwargs["deployment_name"] == "payment-api"
+    assert call_kwargs["deployment_name"] == "ai-support-api"
 
     assert call_kwargs["writes_enabled"] is True
 

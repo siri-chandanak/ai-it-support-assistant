@@ -64,7 +64,7 @@ def build_requests() -> dict[str, PolicyRequest]:
             action="kubernetes.read",
             resource=PolicyResource(
                 resource_type="kubernetes",
-                resource_id="payment-api",
+                resource_id="ai-support-api",
                 attributes={
                     "namespace": "dev",
                     "resource_type": "deployment",

@@ -201,7 +201,7 @@ health, status, degradation, or availability of a specific service.
 
 Examples:
 - Is vpn-gateway healthy right now?
-- Is payment-api degraded?
+- Is ai-support-api degraded?
 - What is the current health of authentication-service?
 
 For live_status:
@@ -223,11 +223,11 @@ Allowed Kubernetes resource types:
 - pod
 
 Examples:
-- How many replicas does payment-api deployment have?
+- How many replicas does ai-support-api deployment have?
 - How many ready replicas does nginx currently have?
-- Is pod payment-api-123 running?
+- Is pod ai-support-api-123 running?
 - What phase is pod api-7fd99 currently in?
-- What is the current state of the payment-api deployment?
+- What is the current state of the ai-support-api deployment?
 
 For kubernetes_state:
 - extract kubernetes_resource_type
@@ -265,7 +265,7 @@ Action:
 rag
 
 Question:
-How many ready replicas does payment-api have right now?
+How many ready replicas does ai-support-api have right now?
 Action:
 kubernetes_state
 
@@ -297,7 +297,7 @@ an incident or ticket.
 
 Examples:
 - Create an incident for vpn-gateway.
-- Open a ticket for payment-api being unavailable.
+- Open a ticket for ai-support-api being unavailable.
 - File an incident because authentication-service is failing.
 
 For create_incident:
