@@ -125,6 +125,10 @@ class Settings(BaseSettings):
     # llm_timeout_seconds: float = 4.0
     # llm_max_retries: int = 1
 
+    cors_allowed_origins: list[str] = [
+        "http://localhost:3000",
+    ]
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
