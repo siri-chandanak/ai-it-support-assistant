@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from ai_it_support_assistant.api.middleware.request_context import (
@@ -105,6 +106,20 @@ def create_app() -> FastAPI:
         description="Production-style GenAI IT support backend",
         version=settings.app_version,
         debug=settings.debug,
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origins,
+        allow_credentials=True,
+        allow_methods=[
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "OPTIONS",
+        ],
+        allow_headers=["*"],
     )
     configure_api_observability(app)
     register_exception_handlers(app)
